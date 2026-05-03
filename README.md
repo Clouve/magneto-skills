@@ -5,7 +5,7 @@ Canonical source for AI Studio skill content. Each subdirectory under a top-leve
 ## On-disk layout
 
 ```
-skills/
+magneto-skills/                       # repo root
 ├── CONTEXT.md.tpl                    # Base AI Studio context template (always staged)
 ├── DevOps/
 │   ├── Gibbon/
@@ -17,12 +17,18 @@ skills/
 │   │       ├── reference/
 │   │       └── scripts/
 │   └── Moodle/
-│       └── CONTEXT.md.tpl            # Persona only — no skill/ tree yet
+│       ├── CONTEXT.md.tpl
+│       └── skill/
+│           ├── SKILL.md
+│           ├── learnings.md
+│           ├── playbooks/
+│           ├── reference/
+│           └── scripts/
 └── Web_Development/
     ├── MERN/
-    │   └── CONTEXT.md.tpl
+    │   └── CONTEXT.md.tpl            # Persona only — no skill/ tree yet
     └── Next.js/
-        └── CONTEXT.md.tpl
+        └── CONTEXT.md.tpl            # Persona only — no skill/ tree yet
 ```
 
 A skill is identified by its **`<Category>/<Name>`** path. Category and Name must each match `[A-Za-z0-9_]+` and `[A-Za-z0-9_.-]+` respectively (strict regex enforced by the loader to block path traversal).
