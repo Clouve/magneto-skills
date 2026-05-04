@@ -19,6 +19,7 @@ magneto-skills/
 ├── plugins/<plugin-name>/
 │   ├── .claude-plugin/
 │   │   └── plugin.json           # manifest: name, version, description, author
+│   ├── install.sh                # OPTIONAL — runtime install hook (see below)
 │   └── skills/<plugin-name>/
 │       ├── SKILL.md              # entry point — YAML frontmatter required
 │       ├── learnings.md
@@ -30,6 +31,21 @@ magneto-skills/
 ```
 
 Plugin names are lowercase kebab-case (`[a-z0-9-]+`). The plugin's directory name, `name` in `plugin.json`, and `name` in the `SKILL.md` frontmatter must all match. The `name` in `marketplace.json`'s entry must match the same value.
+
+### Optional: per-plugin runtime install hook
+
+A plugin that needs runtime apt packages, binaries, or other host-side state on the AI Studio container may ship an `install.sh` at the plugin root (`plugins/<plugin-name>/install.sh`). AI Studio's marketplace plugin-stager runs it after staging the payload, on every container start. This is how Gibbon brings in `default-mysql-client`, `openssh-client`, and `sshpass` (which the skill's scripts shell out to) without bloating the upstream AI Studio image.
+
+Contract:
+
+- The hook runs as **root** with no arguments. CWD is the staged payload directory (`/clouve/skills/<plugin>/plugin/`).
+- The hook **must be idempotent** — it is invoked on every container start, not only the first. Gate each step on `dpkg-query`, `command -v`, or a sentinel file in `/var/lib/clouve/`.
+- Errors are **non-fatal** — a non-zero exit is logged but does not abort plugin activation or other plugins.
+- Persistence: package state in `/usr` and `/var` survives pod restarts (those are persistent volumes); `/etc` edits only survive if AI Studio's SIGTERM trap fires on graceful shutdown.
+
+The hook is the right home for runtime deps that are tied to *this skill's scripts and playbooks*. It is **not** a place for content edits to the skill itself, image rebuild logic, or anything that should live in the upstream AI Studio image. Generic AI Studio enhancements still belong in [Clouve/magneto](https://github.com/Clouve/magneto) under `apps/ai-studio/`.
+
+The full hook contract lives in the plugin-stager source at [apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh](https://github.com/Clouve/magneto/blob/main/apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh).
 
 ## SKILL.md frontmatter
 

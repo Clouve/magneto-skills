@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **gibbon**: added `plugins/gibbon/install.sh` runtime install hook. AI Studio's marketplace plugin-stager runs this after staging the plugin payload to apt-install the binaries the skill's scripts shell out to (`default-mysql-client`, `openssh-client`, `sshpass`). Replaces the previous `apps/gibbon/image/ai-studio/` Dockerfile layer in [Clouve/magneto](https://github.com/Clouve/magneto), so the Gibbon app now consumes the upstream `ai-studio` image directly with no per-app image layer.
+- Documented the per-plugin install hook convention in `CLAUDE.md`.
+
 ## 1.0.0 — 2026-05-03
 
 - Restructured repository as a Claude Code plugin marketplace.
