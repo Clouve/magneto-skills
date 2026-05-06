@@ -1,0 +1,35 @@
+{
+  "name": "clouve",
+  "description": "Clouve's AI client skills marketplace — DevOps and business application skills for Claude Code, Codex CLI, and Gemini CLI.",
+  "owner": {
+    "name": "Clouve",
+    "url": "https://clouve.com"
+  },
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "gibbon",
+      "source": "./plugins/gibbon",
+      "description": "Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, hardening, and diagnosing 500s. Use when the user is running this app, mentions \"Gibbon\", or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.",
+      "version": "0.1.0",
+      "category": "DevOps",
+      "tags": ["devops", "school-management", "gibbon", "php", "mysql"],
+      "author": {
+        "name": "Clouve",
+        "url": "https://clouve.com"
+      }
+    },
+    {
+      "name": "moodle",
+      "source": "./plugins/moodle",
+      "description": "Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions \"Moodle\", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.",
+      "version": "0.1.0",
+      "category": "DevOps",
+      "tags": ["devops", "lms", "moodle", "php", "mysql"],
+      "author": {
+        "name": "Clouve",
+        "url": "https://clouve.com"
+      }
+    }
+  ]
+}

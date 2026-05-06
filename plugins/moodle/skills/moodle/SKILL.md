@@ -1,5 +1,5 @@
 ---
-name: Moodle DevOps
+name: moodle
 description: Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
 version: 0.1.0
@@ -113,7 +113,7 @@ This skill is a living document. When you finish a task and you have learned som
 
 ### Runtime caveat
 
-Inside the deployed AI Studio container the skill is mounted from `/clouve/skills/devops-moodle/`, and `/clouve/` is **not** in the container's persistent path set (`/usr`, `/var`, `/opt`, `/home`). Edits made at runtime survive the rest of the session but are wiped on the next pod restart, and they do not propagate back to the magneto source repo. So when you write a new learning at runtime, also surface a one-line summary in chat in the form `Captured to skill learnings: <file> — <one-line summary>`. That visible echo is the only mechanism by which a runtime learning becomes durable — the operator can copy it into the magneto repo and rebuild the image.
+Inside the deployed Magneto Agent container the skill payload is staged by the marketplace loader at `/clouve/skills/moodle/plugin/skills/moodle/` (with a login-time symlink at `~/.claude/skills/moodle`), and `/clouve/` is **not** in the container's persistent path set (`/usr`, `/var`, `/opt`, `/home`). Edits made at runtime survive the rest of the session but are wiped on the next pod restart, and they do not propagate back to the magneto-skills source repo. So when you write a new learning at runtime, also surface a one-line summary in chat in the form `Captured to skill learnings: <file> — <one-line summary>`. That visible echo is the only mechanism by which a runtime learning becomes durable — the operator can copy it into the magneto-skills repo and the next image rebuild bakes it in for every tenant.
 
 ## Safety gates (enforce these in every flow)
 
