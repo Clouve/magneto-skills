@@ -18,7 +18,7 @@ When code version < DB version, the site **refuses to bootstrap** — you have d
 When they're equal, the site is healthy.
 
 ```bash
-# Check the invariant from the AI Studio container:
+# Check the invariant from the Magneto Agent container:
 CODE_VER=$(curl -sf http://moodle/version.php 2>/dev/null | grep -oE "version *= *[0-9.]+" | head -1)
 # Or via SSH into the moodle container:
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@"$MOODLE_HOST" \

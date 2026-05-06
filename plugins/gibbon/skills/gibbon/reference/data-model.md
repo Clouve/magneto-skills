@@ -131,7 +131,7 @@ Use a PHP PDO script (piped via SSH) rather than a raw SQL heredoc — it's easi
 
 ## How to safely explore the DB
 
-From the AI Studio container, against the app's pod-internal MySQL:
+From the Magneto Agent container, against the app's pod-internal MySQL:
 
 ```bash
 # Read-only probe, safe to run

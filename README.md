@@ -35,6 +35,7 @@ magneto-skills/
 │   ├── gibbon/
 │   │   ├── .claude-plugin/
 │   │   │   └── plugin.json       # plugin manifest
+│   │   ├── install.sh            # optional runtime install hook (apt deps)
 │   │   └── skills/
 │   │       └── gibbon/
 │   │           ├── SKILL.md      # Anthropic-style skill entry point
@@ -43,7 +44,7 @@ magneto-skills/
 │   │           ├── reference/
 │   │           └── scripts/
 │   └── moodle/
-│       └── …                     # same shape as gibbon
+│       └── …                     # same shape as gibbon (also ships install.sh)
 ├── CHANGELOG.md
 ├── CLAUDE.md
 └── README.md
@@ -51,9 +52,22 @@ magneto-skills/
 
 Each plugin currently ships a single skill at `plugins/<name>/skills/<name>/`. Multi-skill plugins are supported by the spec but not used here.
 
-## AI Studio
+## Magneto Agent
 
-The same skill content is consumed by Clouve's AI Studio container via the `AI_STUDIO_SKILLS` env var. The loader resolves plugin slugs (e.g. `gibbon`, `moodle`) against this repo's `plugins/` tree.
+The same skill content is consumed by Clouve's [Magneto Agent](https://github.com/Clouve/magneto-agent) container at runtime. Magneto Agent's marketplace loader treats this repo as one Claude Code plugin marketplace among possibly many — set on the `MAGNETO_AGENT_SKILLS` env var as a comma-separated list of marketplace repository URLs, each optionally narrowed with `?plugins=<n1>,<n2>` and pinned with `#<branch>`:
+
+```yaml
+# All plugins from this marketplace, default branch
+MAGNETO_AGENT_SKILLS: https://github.com/Clouve/magneto-skills.git
+
+# Subset filter
+MAGNETO_AGENT_SKILLS: https://github.com/Clouve/magneto-skills.git?plugins=gibbon,moodle
+
+# Pinned branch
+MAGNETO_AGENT_SKILLS: https://github.com/Clouve/magneto-skills.git?plugins=gibbon#release/2026-q2
+```
+
+See the [Magneto Agent README](https://github.com/Clouve/magneto-agent/blob/main/README.md#ai-skills) for the full URL syntax, private-marketplace credentials (`MAGNETO_AGENT_SKILLS_GIT_TOKEN[__<HOST>]`), and error semantics.
 
 ## See also
 

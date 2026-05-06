@@ -175,9 +175,9 @@ php admin/cli/check_database_schema.php
 | 4 | If 404 with path `theme/styles.php/...`, suspect `slasharguments` (see "Some pages work, others 404"). |
 | 5 | If 200 but wrong content, suspect themedesignermode being inadvertently on. Check `mdl_config WHERE name='themedesignermode'`. |
 
-## "AI Studio can't reach the moodle container"
+## "Magneto Agent can't reach the moodle container"
 
-Out of skill scope — that's a Clouve platform / pod networking issue, not a Moodle issue. Confirm with `curl -v http://${MOODLE_HOST}/` from AI Studio. If 0 bytes / connection refused / DNS fail, it's not Moodle.
+Out of skill scope — that's a Clouve platform / pod networking issue, not a Moodle issue. Confirm with `curl -v http://${MOODLE_HOST}/` from Magneto Agent. If 0 bytes / connection refused / DNS fail, it's not Moodle.
 
 ## When to escalate to Clouve ops
 

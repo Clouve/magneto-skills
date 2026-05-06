@@ -11,7 +11,7 @@ There is no upstream Gibbon "downgrade" story (see [reference/upgrade.md](../ref
 
 ## Decision: partial-restore or full-restore?
 
-- **Partial restore** — a single table (e.g. just `gibbonBehaviour` because a mis-import went wrong). Do this from AI Studio if you can cleanly scope the rows. High risk of FK orphans if you pick wrong.
+- **Partial restore** — a single table (e.g. just `gibbonBehaviour` because a mis-import went wrong). Do this from Magneto Agent if you can cleanly scope the rows. High risk of FK orphans if you pick wrong.
 - **Full restore** — the whole DB and the whole `gibbondata` volume. Always-correct, but it's an ops operation (requires Clouve platform access to replace volumes or to run `mysql < dump.sql` against an empty DB).
 
 When in doubt, full restore. The operational cost is small; the cost of a partial restore that introduces FK orphans is weeks of chasing ghost data.
@@ -31,7 +31,7 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysqldump \
 
 ### 2. Coordinate the file-volume restore with Clouve ops
 
-AI Studio cannot write to the `gibbon` container's `/var/www/html` volume. Tell the tenant:
+Magneto Agent cannot write to the `gibbon` container's `/var/www/html` volume. Tell the tenant:
 
 > To restore, the Clouve ops team needs to:
 > 1. Stop the `gibbon` container in this app.

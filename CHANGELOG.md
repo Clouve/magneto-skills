@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- **gibbon**: added `plugins/gibbon/install.sh` runtime install hook. AI Studio's marketplace plugin-stager runs this after staging the plugin payload to apt-install the binaries the skill's scripts shell out to (`default-mysql-client`, `openssh-client`, `sshpass`). Replaces the previous `apps/gibbon/image/ai-studio/` Dockerfile layer in [Clouve/magneto](https://github.com/Clouve/magneto), so the Gibbon app now consumes the upstream `ai-studio` image directly with no per-app image layer.
+- **gibbon**, **moodle**: added per-plugin `install.sh` runtime install hooks at `plugins/<name>/install.sh`. [Magneto Agent](https://github.com/Clouve/magneto-agent)'s marketplace plugin-stager runs each one after staging the plugin payload to apt-install the binaries the skill's scripts shell out to (`default-mysql-client`, `openssh-client`, `sshpass`). Replaces the previous per-app `apps/<name>/image/ai-studio/` Dockerfile layers in [Clouve/magneto](https://github.com/Clouve/magneto), so both apps now consume the upstream Magneto Agent image directly with no per-app image layer.
 - Documented the per-plugin install hook convention in `CLAUDE.md`.
+- Updated `README.md` and `CLAUDE.md` for the upstream platform changes: the AI Studio image source moved out of `Clouve/magneto` (`apps/ai-studio/image/`) into the standalone [`Clouve/magneto-agent`](https://github.com/Clouve/magneto-agent) repo and was renamed **Magneto Agent**. The activation env var was renamed `AI_STUDIO_SKILLS` → `MAGNETO_AGENT_SKILLS` and now takes Claude Code marketplace URLs (with optional `?plugins=` filter and `#branch` ref) rather than `<Category>/<Name>` plugin slugs against this repo's tree.
 
 ## 1.0.0 — 2026-05-03
 

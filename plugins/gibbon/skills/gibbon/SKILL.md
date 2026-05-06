@@ -18,7 +18,7 @@ Use this skill when the user is working with the Clouve Gibbon app, when they me
 
 - Generic "how does PHP/Apache/MySQL work" questions with no Gibbon tie-in.
 - The user is building a new PHP app from scratch.
-- The user is debugging AI Studio itself (the terminal, FileBrowser, nginx, `.bash_profile`) — that is not Gibbon's concern.
+- The user is debugging Magneto Agent itself (the terminal, FileBrowser, nginx, `.bash_profile`) — that is not Gibbon's concern.
 - The user is asking about another app in the same pod (Moodle, WordPress, etc.) — unless the question is about Gibbon's side of an integration.
 
 ## Operating principles (load-bearing — read before any destructive action)
@@ -36,7 +36,7 @@ Use this skill when the user is working with the Clouve Gibbon app, when they me
 
 ## Environment you are running in
 
-- You are inside the AI Studio container in the app's pod.
+- You are inside the Magneto Agent container in the app's pod.
 - Gibbon is reachable at the pod-internal hostname `gibbon` on port 80. The Gibbon MySQL is at `gibbon-mysql:3306`. Both are rendered into env vars injected by the app — use `${GIBBON_HOST}` / `${GIBBON_DB_HOST}` rather than hard-coding names.
 - You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env); connect with `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${GIBBON_HOST}` (or `@${GIBBON_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 
@@ -94,7 +94,7 @@ This skill is a living document. When you finish a task and you have learned som
 
 ### Runtime caveat
 
-Inside the deployed AI Studio container the skill is mounted from `/clouve/skills/gibbon-devops/`, and `/clouve/` is **not** in the container's persistent path set (`/usr`, `/var`, `/opt`, `/home`). Edits made at runtime survive the rest of the session but are wiped on the next pod restart, and they do not propagate back to the magneto source repo. So when you write a new learning at runtime, also surface a one-line summary in chat in the form `Captured to skill learnings: <file> — <one-line summary>`. That visible echo is the only mechanism by which a runtime learning becomes durable — the operator can copy it into the magneto repo and rebuild the image.
+Inside the deployed Magneto Agent container the skill payload is staged by the marketplace loader at `/clouve/skills/gibbon/plugin/skills/gibbon/` (with a login-time symlink at `~/.claude/skills/gibbon`), and `/clouve/` is **not** in the container's persistent path set (`/usr`, `/var`, `/opt`, `/home`). Edits made at runtime survive the rest of the session but are wiped on the next pod restart, and they do not propagate back to the magneto-skills source repo. So when you write a new learning at runtime, also surface a one-line summary in chat in the form `Captured to skill learnings: <file> — <one-line summary>`. That visible echo is the only mechanism by which a runtime learning becomes durable — the operator can copy it into the magneto-skills repo and the next image rebuild bakes it in for every tenant.
 
 ## Safety gates (enforce these in every flow)
 

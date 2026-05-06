@@ -12,7 +12,7 @@ Run through this after a tenant's first successful launch. Most items are settin
 ### 1. TLS / HTTPS only
 
 - [ ] `$GIBBON_URL` is `https://…` (check the app's env; `applicationUrl` should produce HTTPS).
-- [ ] The cert on `$GIBBON_URL` is a real CA-signed cert, not self-signed. From AI Studio:
+- [ ] The cert on `$GIBBON_URL` is a real CA-signed cert, not self-signed. From Magneto Agent:
   ```bash
   curl -svI "$GIBBON_URL" 2>&1 | grep -E "issuer|subject"
   ```
@@ -95,8 +95,8 @@ Default 20 MB per file (set in the image's `php.ini`). Most schools are fine wit
 
 Not a security setting per se, but load-bearing. Tell the tenant:
 - Run a backup before every upgrade, module install, or rollover (this skill will do it for them if they ask).
-- Periodically (monthly at minimum) download the backup file from `$HOME/backups/` in AI Studio to an off-site location.
-- Clouve's `ai-studio-home` volume survives container restarts but is not an off-site backup.
+- Periodically (monthly at minimum) download the backup file from `$HOME/backups/` in Magneto Agent to an off-site location.
+- Clouve's `magneto-agent-home` volume survives container restarts but is not an off-site backup.
 
 ### 11. Audit user accounts
 

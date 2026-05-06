@@ -4,7 +4,7 @@ Three distinct things that can be "rotated" here, with very different procedures
 
 1. **Gibbon admin user password** — the `GIBBON_PASSWORD` the tenant uses to log into Gibbon's UI as the first admin.
 2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`.
-3. **The tenant's Anthropic API key** — stored on disk at `$HOME/.claude_api_key` in the AI Studio container.
+3. **The tenant's Anthropic API key** — stored on disk at `$HOME/.claude_api_key` in the Magneto Agent container.
 
 Pick the right one before doing anything.
 
@@ -37,7 +37,7 @@ The image auto-syncs `config.php` from env vars on every restart. Use that.
    mysql -h "$GIBBON_DB_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e \
      "ALTER USER 'gibbon'@'%' IDENTIFIED BY '<new-password>'; FLUSH PRIVILEGES;"
    ```
-   From AI Studio you usually don't have root. Escalate to Clouve ops.
+   From Magneto Agent you usually don't have root. Escalate to Clouve ops.
 
 3. **Update the app's env var.** `DB_PASSWORD` in the pod spec (for this app it's the `secret` type, Clouve-managed). Via the Clouve platform UI: rotate the secret.
 
@@ -64,20 +64,20 @@ The image auto-syncs `config.php` from env vars on every restart. Use that.
 
 This is between the tenant and Anthropic — Clouve never stores, proxies, or sees the key.
 
-The key lives in three possible places, resolution order per [apps/ai-studio/image/installer/chat/.bash_profile](../../../ai-studio/image/installer/chat/.bash_profile):
+The key lives in three possible places, resolution order per [Magneto Agent's `.bash_profile`](https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/.bash_profile):
 
 1. `$ANTHROPIC_API_KEY` env var injected at pod launch (from Clouve's `userConfigurable` secret).
-2. `$HOME/.claude_api_key` file — persisted across restarts on the `ai-studio-home` volume.
+2. `$HOME/.claude_api_key` file — persisted across restarts on the `magneto-agent-home` volume.
 3. In-terminal prompt at first session.
 
 Plus:
-4. AI Studio's web Preferences Panel.
+4. Magneto Agent's web Preferences Panel.
 
 ### Procedure
 
 Tenant path (don't do this for them):
 1. Generate a new key at `console.anthropic.com/settings/keys`.
-2. Either: overwrite `$HOME/.claude_api_key` with the new key, OR use AI Studio's Preferences Panel to update it.
+2. Either: overwrite `$HOME/.claude_api_key` with the new key, OR use Magneto Agent's Preferences Panel to update it.
 3. Open a fresh terminal → Claude Code picks up the new key.
 4. Revoke the old key at `console.anthropic.com/settings/keys`.
 

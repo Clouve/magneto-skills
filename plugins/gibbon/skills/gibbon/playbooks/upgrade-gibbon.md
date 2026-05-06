@@ -40,7 +40,7 @@ Confirm the backup file exists and its size is non-trivial (a gibbon DB dump sho
 
 ### 3. Deploy the new app version
 
-This step is outside AI Studio — the tenant clicks "Update" in the Clouve marketplace UI, or Clouve ops triggers a redeploy with the new `GIBBON_VERSION` in the app's compose. Tell the user:
+This step is outside Magneto Agent — the tenant clicks "Update" in the Clouve marketplace UI, or Clouve ops triggers a redeploy with the new `GIBBON_VERSION` in the app's compose. Tell the user:
 
 > Trigger the app update from the Clouve marketplace. The `gibbon` container will be recreated with the new code; your data volumes (`gibbondata`, `dbdata`) are preserved.
 

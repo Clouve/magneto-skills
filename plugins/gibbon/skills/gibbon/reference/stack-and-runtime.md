@@ -66,7 +66,7 @@ Gibbon v30.0.01's declared requirements come from `version.php` (the `$systemReq
 ├── gibbon/
 │   ├── gibbon-30.0.01/              ← pristine package contents from InstallBundle.tar.gz
 │   └── installer/                   ← entrypoint.sh, install.sh, upgrade.sh, auto.php, ...
-└── skills/gibbon-devops/            ← THIS skill, mounted here by the app (AI Studio container only)
+└── skills/gibbon/plugin/skills/gibbon/  ← THIS skill, staged by the marketplace loader (Magneto Agent container only); login-time symlink at ~/.claude/skills/gibbon
 
 /var/log/gibbon-cron.log             ← our cron wrapper's log
 /var/log/gibbon-cron.state/          ← per-task lastrun timestamps

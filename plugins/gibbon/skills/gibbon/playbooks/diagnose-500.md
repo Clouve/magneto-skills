@@ -43,7 +43,7 @@ If the DB version is behind the code version, a migration is pending. Running so
 
 ## Step 4 — `config.php` intact?
 
-You can't read `/var/www/html/config.php` from AI Studio. Indirect signal: if the login page renders but all post-login pages 500, `config.php` is usually fine (Gibbon got past the DB connect). If the login page itself 500s, `config.php` may be broken.
+You can't read `/var/www/html/config.php` from Magneto Agent. Indirect signal: if the login page renders but all post-login pages 500, `config.php` is usually fine (Gibbon got past the DB connect). If the login page itself 500s, `config.php` may be broken.
 
 Ask the tenant or ops to verify:
 - `config.php` is non-empty.
@@ -59,11 +59,11 @@ If `config.php` is broken → check if the most recent restart ran `update-confi
 If a specific page 500s with "permission denied" or "could not write to" in the error:
 
 ```bash
-# Apache log has the actual error. AI Studio can't see it; ask the tenant or ops:
+# Apache log has the actual error. Magneto Agent can't see it; ask the tenant or ops:
 # docker exec gibbon tail -n 200 /var/log/apache2/error.log
 ```
 
-Common: `/var/www/html/uploads/` or `/var/www/html/uploads/cache/` not writable by `www-data`. Fix with `chown -R www-data:www-data /var/www/html/uploads` (ops operation — not from AI Studio).
+Common: `/var/www/html/uploads/` or `/var/www/html/uploads/cache/` not writable by `www-data`. Fix with `chown -R www-data:www-data /var/www/html/uploads` (ops operation — not from Magneto Agent).
 
 ## Step 6 — bad module
 
