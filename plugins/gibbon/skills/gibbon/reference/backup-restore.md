@@ -27,7 +27,7 @@ Backup of `gibbondata` captures items 2, 3, 4. Dump of the DB captures item 1.
 
 ## Backup procedure (what `scripts/backup.sh` does)
 
-Run from the AI Studio container. Writes a timestamped tarball to `$HOME/backups/`.
+Run from the Magneto Agent container. Writes a timestamped tarball to `$HOME/backups/`.
 
 ```
 timestamp=$(date +%Y-%m-%d-%H-%M-%S)
@@ -41,22 +41,22 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysqldump \
   --default-character-set=utf8mb3 \
   "$GIBBON_DB_NAME" > "$out/gibbon.sql"
 
-# 2/3/4. files over HTTP? No — we don't have a shell in the gibbon container from AI Studio.
+# 2/3/4. files over HTTP? No — we don't have a shell in the gibbon container from Magneto Agent.
 # Use the Gibbon admin UI's "Backup" feature (if the tenant has it enabled) OR
 # escalate to Clouve ops to snapshot the gibbondata volume.
 ```
 
-**The gotcha:** from the AI Studio container, you can dump the DB (it's a network-reachable MySQL on port 3306) but you **cannot** tar `/var/www/html` — that path is on the `gibbon` container's volume, which AI Studio has no filesystem view of. You have three options:
+**The gotcha:** from the Magneto Agent container, you can dump the DB (it's a network-reachable MySQL on port 3306) but you **cannot** tar `/var/www/html` — that path is on the `gibbon` container's volume, which Magneto Agent has no filesystem view of. You have three options:
 
 1. **Ask the user / Clouve ops to snapshot the `gibbondata` volume** (the app's canonical disaster-recovery path).
 2. **Use Gibbon's admin UI "System Backup" feature** if enabled in the tenant's install — it produces a zip you can download over HTTPS.
-3. **SSH into the `gibbon` container** — requires `kubectl exec`, which is not available from AI Studio. **Do not fabricate** a procedure that assumes it is.
+3. **SSH into the `gibbon` container** — requires `kubectl exec`, which is not available from Magneto Agent. **Do not fabricate** a procedure that assumes it is.
 
 Tell the user which path you took and ask them to confirm.
 
 ## Restore procedure
 
-### DB restore (what you can do from AI Studio)
+### DB restore (what you can do from Magneto Agent)
 
 ```
 # 1. Confirm gibbon-mysql is reachable and the target DB is empty or you're overwriting intentionally
@@ -64,7 +64,7 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" 
   "$GIBBON_DB_NAME" -e "SHOW TABLES;" | wc -l
 
 # 2. Drop and recreate the DB (requires root access — usually NOT available to the gibbon user)
-# This is where it gets hard from AI Studio's side. In practice:
+# This is where it gets hard from Magneto Agent's side. In practice:
 #   - For a partial restore (a single table), SOURCE the relevant section from the dump.
 #   - For a full restore, the tenant should redeploy the app with a fresh dbdata volume and
 #     run mysql < dump.sql as the first-boot step, OR escalate to Clouve ops.
@@ -77,7 +77,7 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" 
 
 ### Filesystem restore
 
-Same constraint as above: you cannot write `/var/www/html` from AI Studio. Escalate to Clouve ops and have them:
+Same constraint as above: you cannot write `/var/www/html` from Magneto Agent. Escalate to Clouve ops and have them:
 
 1. Stop the app's `gibbon` container.
 2. Restore `gibbondata` from volume snapshot (or replay a tar into a fresh volume).
@@ -103,6 +103,6 @@ For a live school: daily at minimum, with retention. Weekly full + daily increme
 
 When you take a backup on their behalf, tell them:
 - Where it is (`$HOME/backups/gibbon-<timestamp>/`).
-- What's in it (DB dump only, from AI Studio → escalate for files, OR full via UI/ops).
-- That AI Studio's `/home` volume survives pod restarts, so the backup persists, but it is not off-site.
+- What's in it (DB dump only, from Magneto Agent → escalate for files, OR full via UI/ops).
+- That Magneto Agent's `/home` volume survives pod restarts, so the backup persists, but it is not off-site.
 - That for disaster recovery, they should periodically download the backup to their own laptop or cloud storage.

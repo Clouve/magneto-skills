@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Clouve's [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). Each plugin is a single, self-contained Anthropic-style skill bundle. There is no build, no test suite, no lint — the deliverables are a `marketplace.json` catalog, per-plugin `plugin.json` manifests, and `SKILL.md` payloads with their supporting files.
 
-This repo was **split out of `Clouve/magneto`**. Old links of the form `../../image/...` or `apps/ai-studio/...` are now cross-repo references — they point into [Clouve/magneto](https://github.com/Clouve/magneto), not into this tree. Don't try to resolve them locally.
+This repo was **split out of `Clouve/magneto`**, and the runtime container that consumes these skills (formerly "AI Studio", now [**Magneto Agent**](https://github.com/Clouve/magneto-agent)) was subsequently split out into its own repo too. Old links of the form `../../image/...` or `apps/ai-studio/image/...` are cross-repo references — image-source paths resolve in [Clouve/magneto-agent](https://github.com/Clouve/magneto-agent); the marketplace listing for the container still lives in [Clouve/magneto](https://github.com/Clouve/magneto) under `apps/ai-studio/` (now thin manifests only). Don't try to resolve any of them locally.
 
-The AI Studio persona templates (`CONTEXT.md.tpl`) that used to live alongside the skills here are managed in a different repo as of the marketplace migration. Don't re-introduce them.
+The per-plugin persona templates (`CONTEXT.md.tpl`) that used to live alongside the skills here are managed in a different repo as of the marketplace migration — Magneto Agent pulls them from each app's sidecar at init via `sidecar-fetcher.sh`, into `/clouve/context/<plugin>/CONTEXT.md.tpl`. Don't re-introduce them in this tree.
 
 ## Layout
 
@@ -34,18 +34,18 @@ Plugin names are lowercase kebab-case (`[a-z0-9-]+`). The plugin's directory nam
 
 ### Optional: per-plugin runtime install hook
 
-A plugin that needs runtime apt packages, binaries, or other host-side state on the AI Studio container may ship an `install.sh` at the plugin root (`plugins/<plugin-name>/install.sh`). AI Studio's marketplace plugin-stager runs it after staging the payload, on every container start. This is how Gibbon brings in `default-mysql-client`, `openssh-client`, and `sshpass` (which the skill's scripts shell out to) without bloating the upstream AI Studio image.
+A plugin that needs runtime apt packages, binaries, or other host-side state on the [Magneto Agent](https://github.com/Clouve/magneto-agent) container may ship an `install.sh` at the plugin root (`plugins/<plugin-name>/install.sh`). Magneto Agent's marketplace plugin-stager runs it after staging the payload, on every container start. Both `gibbon` and `moodle` use this to pull in `default-mysql-client`, `openssh-client`, and `sshpass` (which the skills' scripts shell out to) without bloating the upstream Magneto Agent image.
 
 Contract:
 
 - The hook runs as **root** with no arguments. CWD is the staged payload directory (`/clouve/skills/<plugin>/plugin/`).
 - The hook **must be idempotent** — it is invoked on every container start, not only the first. Gate each step on `dpkg-query`, `command -v`, or a sentinel file in `/var/lib/clouve/`.
 - Errors are **non-fatal** — a non-zero exit is logged but does not abort plugin activation or other plugins.
-- Persistence: package state in `/usr` and `/var` survives pod restarts (those are persistent volumes); `/etc` edits only survive if AI Studio's SIGTERM trap fires on graceful shutdown.
+- Persistence: package state in `/usr` and `/var` survives pod restarts (those are persistent volumes); `/etc` edits only survive if Magneto Agent's SIGTERM trap fires on graceful shutdown.
 
-The hook is the right home for runtime deps that are tied to *this skill's scripts and playbooks*. It is **not** a place for content edits to the skill itself, image rebuild logic, or anything that should live in the upstream AI Studio image. Generic AI Studio enhancements still belong in [Clouve/magneto](https://github.com/Clouve/magneto) under `apps/ai-studio/`.
+The hook is the right home for runtime deps that are tied to *this skill's scripts and playbooks*. It is **not** a place for content edits to the skill itself, image rebuild logic, or anything that should live in the upstream Magneto Agent image. Generic Magneto Agent enhancements belong in [Clouve/magneto-agent](https://github.com/Clouve/magneto-agent) (the standalone image source); the marketplace listing in [Clouve/magneto](https://github.com/Clouve/magneto) under `apps/ai-studio/` is now thin manifests only.
 
-The full hook contract lives in the plugin-stager source at [apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh](https://github.com/Clouve/magneto/blob/main/apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh).
+The full hook contract lives in the plugin-stager source at [image/installer/chat/marketplace/plugin-stager.sh](https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/marketplace/plugin-stager.sh).
 
 ## SKILL.md frontmatter
 
@@ -55,7 +55,7 @@ Required fields: `name`, `description`. DevOps skills additionally carry `type`,
 
 ## Runtime persistence — why the "captured to skill learnings" echo matters
 
-When tenants run these skills inside an AI Studio container, the skill mount path is **not** in the persistent path set (`/usr`, `/var`, `/opt`, `/home`). Edits a tenant Claude makes at runtime survive the rest of the session but are wiped on pod restart, and they do **not** propagate back to this repo on their own.
+When tenants run these skills inside a Magneto Agent container, the skill mount path (`/clouve/skills/`) is **not** in the persistent path set (`/usr`, `/var`, `/opt`, `/home`). The marketplace loader rebuilds it on every container start by re-cloning the marketplaces in `MAGNETO_AGENT_SKILLS`. Edits a tenant Claude makes at runtime survive the rest of the session but are wiped on pod restart, and they do **not** propagate back to this repo on their own.
 
 The mechanism every DevOps skill uses to bridge that gap: when a runtime session captures a learning, it surfaces a one-line summary in chat:
 
@@ -69,7 +69,7 @@ The operator (you, when working in this repo) is expected to mirror those captur
 - **De-duplicate before appending.** Grep the target file (and `learnings.md`) for the topic first; extend related entries instead of creating parallel ones.
 - **Keep entries terse and dated.** ISO-8601 (`YYYY-MM-DD`); promote anything past ~10 lines to its own file with a one-line pointer left behind.
 - **Don't bake secrets, tenant-identifying data, or `/_clv/`-related content into any skill.** The `/_clv/` namespace is platform-managed and explicitly outside skill scope.
-- **Cross-repo references stay as URLs**, not relative paths. Files like `apps/ai-studio/image/installer/chat/skills.sh` live in [Clouve/magneto](https://github.com/Clouve/magneto), not here.
+- **Cross-repo references stay as URLs**, not relative paths. Files like `image/installer/chat/skills.sh` live in [Clouve/magneto-agent](https://github.com/Clouve/magneto-agent), not here.
 
 ## Adding a new plugin
 

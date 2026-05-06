@@ -4,10 +4,10 @@
 
 A healthy Gibbon container in this app satisfies all of the below. Run these checks whenever the user asks "is this working?"
 
-1. **HTTP**. `curl -sI http://gibbon/index.php` from inside the AI Studio container returns `200 OK`. Login page renders (html contains `Gibbon`).
+1. **HTTP**. `curl -sI http://gibbon/index.php` from inside the Magneto Agent container returns `200 OK`. Login page renders (html contains `Gibbon`).
 2. **DB reachability**. `mysqladmin -h gibbon-mysql -u gibbon -p"$GIBBON_DB_PASSWORD" ping` returns `mysqld is alive`.
 3. **`gibbonSetting(version) == /var/www/html/version.php $version`**. If they drift, an upgrade is pending.
-4. **Cron running**. Inside the `gibbon` container: `service cron status` → `cron is running`. From AI Studio you can't check this directly — you'd infer from whether `/var/log/gibbon-cron.log` is progressing, but you also can't read that file from AI Studio. See "Limits" below.
+4. **Cron running**. Inside the `gibbon` container: `service cron status` → `cron is running`. From Magneto Agent you can't check this directly — you'd infer from whether `/var/log/gibbon-cron.log` is progressing, but you also can't read that file from Magneto Agent. See "Limits" below.
 5. **Uploads writable**. `uploads/cache/` owned by `www-data`, mode 755. Gibbon writes compiled templates here on every request.
 6. **No PHP fatal in Apache log**. `docker logs gibbon | tail -n 200` — no `PHP Fatal error`, no `mysqli_sql_exception`.
 
@@ -15,7 +15,7 @@ The Clouve healthcheck configured in [apps/gibbon/clv-docker-compose.yml](../../
 
 ## Where logs live
 
-### In the `gibbon` container (reachable only via `kubectl exec` — not from AI Studio)
+### In the `gibbon` container (reachable only via `kubectl exec` — not from Magneto Agent)
 
 | Path | What's in it | Rotation |
 |---|---|---|
@@ -31,7 +31,7 @@ The Clouve healthcheck configured in [apps/gibbon/clv-docker-compose.yml](../../
 - **Gibbon UI: System Admin → View Logs** — reads `gibbonLog`, the in-DB event log (logins, setting changes, module installs, rollover runs). Not the Apache log.
 - **Clouve platform logs** — whatever view Clouve surfaces for the tenant's pod.
 
-### Accessible from AI Studio
+### Accessible from Magneto Agent
 
 From inside this container, you can:
 - `curl` Gibbon's HTTP endpoint for page responses.
@@ -78,7 +78,7 @@ The container runs Debian `cron` as a service. `/etc/cron.d/gibbon-cron` is rend
 
 ### Diagnosing "are my scheduled tasks running?"
 
-The canonical diagnostic surface lives in the `gibbon` container. Because you can't `kubectl exec` from AI Studio, walk the user through it:
+The canonical diagnostic surface lives in the `gibbon` container. Because you can't `kubectl exec` from Magneto Agent, walk the user through it:
 
 ```
 # Inside the gibbon container (the user or Clouve ops runs this):
@@ -88,7 +88,7 @@ tail -F /var/log/gibbon-cron.log               # Follow the scheduler log
 ls -la /var/log/gibbon-cron.state/             # Per-task lastrun timestamps
 ```
 
-From the AI Studio side, you can still check indirect signals:
+From the Magneto Agent side, you can still check indirect signals:
 - `SELECT * FROM gibbonLog WHERE title LIKE '%cron%' OR title LIKE '%notification%' ORDER BY timestamp DESC LIMIT 20;` — some scripts write to the event log.
 - `SELECT * FROM gibbonNotification WHERE timestamp > NOW() - INTERVAL 2 DAY ORDER BY timestamp DESC LIMIT 20;` — if notifications are being created, something is running.
 - Ask the user to try to trigger a behaviour-letter manually and check if it arrives on the expected cadence.
@@ -97,7 +97,7 @@ From the AI Studio side, you can still check indirect signals:
 
 `/var/www/html/uploads/cache/` holds compiled twig templates and cached rendered pages. It's wiped on every `entrypoint.sh` run. If you see stale rendering (e.g. a CSS change didn't take effect after an upgrade), a pod restart is the fix.
 
-The only way to clear it without a restart: ask the tenant to use **System Admin → Cache Manager → Clear Cache** from the Gibbon UI. Do not try to clear it from the AI Studio side — you can't write to that volume.
+The only way to clear it without a restart: ask the tenant to use **System Admin → Cache Manager → Clear Cache** from the Gibbon UI. Do not try to clear it from the Magneto Agent side — you can't write to that volume.
 
 ## Metrics / observability the tenant sees
 
@@ -110,10 +110,10 @@ Claude Code should not intermediate any of this — surface it as "your platform
 ## Limits of what this skill can observe
 
 Every skill user should know, and you should say so when relevant:
-- We cannot see Apache logs from AI Studio.
-- We cannot see `/var/log/gibbon-cron.log` from AI Studio.
-- We cannot run `service cron status` from AI Studio.
-- We cannot read or write files inside the `gibbon` container's volume from AI Studio.
-- We CAN: query Gibbon's DB over the pod network, HTTP-fetch Gibbon's public pages, and read anything in the AI Studio container's own filesystem.
+- We cannot see Apache logs from Magneto Agent.
+- We cannot see `/var/log/gibbon-cron.log` from Magneto Agent.
+- We cannot run `service cron status` from Magneto Agent.
+- We cannot read or write files inside the `gibbon` container's volume from Magneto Agent.
+- We CAN: query Gibbon's DB over the pod network, HTTP-fetch Gibbon's public pages, and read anything in the Magneto Agent container's own filesystem.
 
 When a user asks a diagnostic question whose answer lives inside the `gibbon` container, be explicit about that boundary. Ask them to run the command or escalate, rather than inventing output.

@@ -40,7 +40,7 @@ The SSH hop is unambiguously needed for any of:
 
 The SSH hop is overkill (and slower) for:
 
-- **Routine SQL.** From the AI Studio container you can `mysql -h ${MOODLE_DB_HOST} ...` or `psql -h ${MOODLE_DB_HOST} ...` over TCP — no SSH hop needed.
+- **Routine SQL.** From the Magneto Agent container you can `mysql -h ${MOODLE_DB_HOST} ...` or `psql -h ${MOODLE_DB_HOST} ...` over TCP — no SSH hop needed.
 - **HTTP probes.** `curl -sI http://${MOODLE_HOST}/login/index.php` works directly.
 - **Reading files that the script wrapper already exposes.** [scripts/php-info.sh](../scripts/php-info.sh) and [scripts/verify-health.sh](../scripts/verify-health.sh) are designed to give you the data you need without SSH.
 
@@ -48,7 +48,7 @@ The TCP channels (mysql, curl) are faster and produce more reliable transcripts.
 
 ## Safety gates apply over SSH too
 
-Having a `sudo` prompt does not change the safety story. Every gate from [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow) applies whether the command runs locally in AI Studio or via SSH:
+Having a `sudo` prompt does not change the safety story. Every gate from [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow) applies whether the command runs locally in Magneto Agent or via SSH:
 
 - `sudo apachectl stop` is destructive — gate it.
 - `sudo systemctl stop mariadb` (on the DB host) is destructive — gate it.
@@ -57,7 +57,7 @@ Having a `sudo` prompt does not change the safety story. Every gate from [SKILL.
 - `sudo php /var/www/html/admin/cli/upgrade.php` IS the upgrade — gate it via [playbooks/upgrade-moodle.md](../playbooks/upgrade-moodle.md).
 - `sudo -u www-data php /var/www/html/admin/cli/maintenance.php --enable` is fine (idempotent state change) and you should announce it before running.
 
-The general rule: if the same command would require user ack when run from AI Studio, it requires user ack when run via SSH.
+The general rule: if the same command would require user ack when run from Magneto Agent, it requires user ack when run via SSH.
 
 ## Common one-shot commands
 

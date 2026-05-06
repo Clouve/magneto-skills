@@ -18,7 +18,7 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 
 - Generic "how does PHP/Apache/MySQL work" questions with no Moodle tie-in.
 - The user is building a new PHP app from scratch.
-- The user is debugging AI Studio itself (the terminal, FileBrowser, nginx, `.bash_profile`) — that is not Moodle's concern.
+- The user is debugging Magneto Agent itself (the terminal, FileBrowser, nginx, `.bash_profile`) — that is not Moodle's concern.
 - The user is asking about another app in the same pod (Gibbon, WordPress, etc.) — unless the question is about Moodle's side of an integration.
 
 ## Operating principles (load-bearing — read before any destructive action)
@@ -37,7 +37,7 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 
 ## Environment you are running in
 
-- You are inside the AI Studio container in the app's pod.
+- You are inside the Magneto Agent container in the app's pod.
 - Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MariaDB; Moodle 5.2 also supports PostgreSQL ≥16 and MySQL ≥8.4 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `env | grep -i moodle` before relying on any specific one.
 - You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env); connect with `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 

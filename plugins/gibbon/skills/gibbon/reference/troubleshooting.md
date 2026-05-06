@@ -72,9 +72,9 @@ Compare to the `$version` in `/var/www/html/version.php`. If file > DB, a migrat
 
 **Fix.** If you have a backup of a valid `config.php`, restore it. If not: this is a fresh-install scenario — confirm with the user that there is no data to recover, then let the installer run again. **Do not let a tenant proceed past the installer without confirming the DB is empty** — running the installer over a populated DB will duplicate rows and corrupt state.
 
-## 8. SSL / WebSocket issues (AI Studio side, but affects the app UX)
+## 8. SSL / WebSocket issues (Magneto Agent side, but affects the app UX)
 
-**Symptoms.** AI Studio's `/chat` terminal loads but stays blank. Browser console shows WebSocket connection refused. Repeated `/token` fetches with zero `/_clv/chat/ws` entries.
+**Symptoms.** Magneto Agent's `/chat` terminal loads but stays blank. Browser console shows WebSocket connection refused. Repeated `/token` fetches with zero `/_clv/chat/ws` entries.
 
 **First check.** See [CLAUDE.md](../../../CLAUDE.md) — "Self-signed TLS certificates break WebSocket" section. This is an ingress / cert-issuer config, not Gibbon.
 

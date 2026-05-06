@@ -47,7 +47,7 @@ connections are silent — the host key is captured to
 
 | Operation | Use |
 |---|---|
-| Run a SQL query, count rows, read `gibbonSetting` | **TCP `mysql`** from the AI Studio container — faster, no SSH hop |
+| Run a SQL query, count rows, read `gibbonSetting` | **TCP `mysql`** from the Magneto Agent container — faster, no SSH hop |
 | `mysqldump` for backup | **TCP `mysqldump --host=${GIBBON_DB_HOST}`** — works fine over the wire |
 | Read a Gibbon page or hit an API | **TCP `curl http://${GIBBON_HOST}/...`** |
 | Tail `/var/log/apache2/error.log` | **SSH into gibbon**, then `sudo tail -f` |

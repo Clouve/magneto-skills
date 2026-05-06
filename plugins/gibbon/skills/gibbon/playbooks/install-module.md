@@ -37,14 +37,14 @@ Use when the tenant asks "can you install the `<X>` module?" or "I found this Gi
 
 ### 1. Place the module folder on the `gibbondata` volume
 
-The module's files need to live at `/var/www/html/modules/<ModuleName>/` inside the `gibbon` container. From AI Studio you cannot write there directly.
+The module's files need to live at `/var/www/html/modules/<ModuleName>/` inside the `gibbon` container. From Magneto Agent you cannot write there directly.
 
 Paths to get it there:
 1. **Upload via Gibbon's admin UI** — some modules ship a `.tar.gz` or `.zip` that Gibbon's **System Admin → Manage Modules → Install from File** (if the tenant's version has it) can unpack. Cleanest path.
 2. **Clouve ops drop-in** — ops copies the folder into the volume and restarts the `gibbon` container.
 3. **User does it by hand** — `kubectl cp` or equivalent. The user is doing it, not you.
 
-Pick based on what the tenant has access to. Do NOT attempt to shell into the `gibbon` container from AI Studio.
+Pick based on what the tenant has access to. Do NOT attempt to shell into the `gibbon` container from Magneto Agent.
 
 ### 2. Register the module in Gibbon
 

@@ -130,7 +130,7 @@ The PHP error log (Apache: `/var/log/apache2/error.log`; FPM: `/var/log/php-fpm/
 
 ## Surfacing tenant info to Clouve ops
 
-If you can't fix something from inside the AI Studio container, the user files a Clouve support ticket. Make their life easier:
+If you can't fix something from inside the Magneto Agent container, the user files a Clouve support ticket. Make their life easier:
 
 - Include the value of `$CFG->release` (Site administration → Notifications, or `mdl_config WHERE name='release'`).
 - Include the result of `admin/cli/checks.php --filter=status`.
