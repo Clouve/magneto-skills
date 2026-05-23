@@ -8,12 +8,36 @@
   "version": "1.0.0",
   "plugins": [
     {
+      "name": "ai-studio",
+      "source": "./plugins/ai-studio",
+      "description": "Operate a blank Ubuntu 26.04 LTS server on the user's behalf — install software, write code, run services, debug, and verify.",
+      "version": "0.1.0",
+      "category": "DevOps",
+      "tags": ["devops", "workspace", "ubuntu", "ssh", "ai-studio"],
+      "author": {
+        "name": "Clouve",
+        "url": "https://clouve.com"
+      }
+    },
+    {
       "name": "gibbon",
       "source": "./plugins/gibbon",
       "description": "Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, hardening, and diagnosing 500s. Use when the user is running this app, mentions \"Gibbon\", or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.",
       "version": "0.1.0",
       "category": "DevOps",
       "tags": ["devops", "school-management", "gibbon", "php", "mysql"],
+      "author": {
+        "name": "Clouve",
+        "url": "https://clouve.com"
+      }
+    },
+    {
+      "name": "mern",
+      "source": "./plugins/mern",
+      "description": "Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system.",
+      "version": "0.1.0",
+      "category": "DevOps",
+      "tags": ["devops", "mern", "nodejs", "mongodb", "react", "express"],
       "author": {
         "name": "Clouve",
         "url": "https://clouve.com"
