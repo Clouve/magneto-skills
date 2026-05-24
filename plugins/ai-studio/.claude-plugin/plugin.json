@@ -1,0 +1,9 @@
+{
+  "name": "ai-studio",
+  "version": "0.1.0",
+  "description": "Operate a blank Ubuntu 26.04 LTS server on the user's behalf — install software, write code, run services, debug, and verify. Use when the user is working with the Clouve AI Studio app, when they ask to 'install', 'set up', 'deploy', 'run', or 'host' something on the server, when they reference paths under /home/clouve-ops, /opt, /usr/local, or systemd units on the workspace, or when they describe a project they want built and running end-to-end on a Linux server. Do not use for questions about the Magneto Agent chat host itself (terminal, FileBrowser, agent client selection), or for operating other Clouve sibling apps (Moodle, Gibbon, etc.).",
+  "author": {
+    "name": "Clouve",
+    "url": "https://clouve.com"
+  }
+}
