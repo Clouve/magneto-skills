@@ -51,6 +51,23 @@ $fs->delete_area_files($contextid, 'mod_assign', 'submission_files', $itemid);
 
 The base classes live in [public/lib/filestorage/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/filestorage). The autoloaded counterpart `\core_files\file_system` is the storage backend swap point — see below.
 
+## Files referenced from admin settings (`admin_setting_configstoredfile`)
+
+Some Moodle admin settings point to a file instead of holding a scalar value — the site logo (`core_admin/logo`), compact logo (`core_admin/logocompact`), and any third-party plugin setting that extends [`admin_setting_configstoredfile`](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/adminlib.php). Storage is **dual**: the path lives in `mdl_config_plugins`, the bytes live in `mdl_files`. Either side missing → the setting renders as empty (the broken-image icon on the login page is the classic symptom).
+
+`mdl_config_plugins.value` for a stored-file setting holds the **relative file path as a string** (e.g. `/logo.png`) — **not** the `mdl_files.id`. The corresponding `mdl_files` row uses the 6-tuple:
+
+| Field | Value for site logo |
+|---|---|
+| `contextid` | `SYSCONTEXTID` (= `1`) |
+| `component` | `core_admin` |
+| `filearea` | `logo` or `logocompact` |
+| `itemid` | `0` |
+| `filepath` | `/` (parsed from the leading `/` in the config value) |
+| `filename` | `logo.png` (parsed from the rest of the config value) |
+
+The admin UI writes both sides for you. If you're driving it from a script (e.g. installer code landing a tenant logo on first boot), write **both**: insert via `get_file_storage()->create_file_from_*()` against the 6-tuple, **and** set `core_admin/logo` in `mdl_config_plugins` via [admin/cli/cfg.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/cfg.php). Purge caches after — the theme picks up the logo from cached config.
+
 ## Pluggable file system
 
 `$CFG->alternative_file_system_class` (line ~1198 of [config-dist.php](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php)) lets the operator swap the local-filesystem backend for one of:
