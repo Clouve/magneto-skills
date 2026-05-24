@@ -28,17 +28,6 @@ When a playbook uses `mysql` or `psql` in a one-liner, default to `mysql` (match
 
 ---
 
-## 2026-04-28 — Moodle 5.2 split Redis timeouts (MDL-85336)
-
-Pre-5.2: `$CFG->session_redis_timeout = 3` (single value, applied to both connect and read).
-5.2: split into `session_redis_connection_timeout` and `session_redis_read_timeout`, both accept floats.
-
-Same applies to `cachestore_redis` admin UI. Documented in [reference/configuration.md](reference/configuration.md) and [reference/caching.md](reference/caching.md) with config-dist.php line refs.
-
-The old single-value setting still works for backward compat — but on a 5.2 deploy, prefer the split values.
-
----
-
 ## Pruning rule
 
 When an entry above is fully covered by a dedicated file under `reference/` or `playbooks/`, **delete it from this file**. Git history retains the original capture. This file should not grow beyond a screenful.
