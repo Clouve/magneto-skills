@@ -34,7 +34,7 @@ Use this skill when the user is working with the Clouve AI Studio app, when they
 ## Environment you are running in
 
 - You are inside the **Magneto Agent container** in the app's pod.
-- The AI Studio workspace is reachable at the pod-internal hostname `ai-studio` on port `22`. There is no other port and no public ingress — the workspace is internal-only.
+- The AI Studio workspace is reachable at the pod-internal hostname `ai-studio` on port `22`.
 - You **do** have an interactive shell on the workspace via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env). Connect with:
 
   ```bash
@@ -75,6 +75,40 @@ Persistent storage is **per pod**. If the user spins down the app and spins up a
 - **Git checkouts live inside the project directory**, not in a separate `/src` or `/code` tree.
 - **`/opt/<name>/` is for software the user installed manually** (e.g. a Go binary downloaded from a GitHub release, an extracted tarball). Always include a one-line `/opt/<name>/INSTALL.md` describing where it came from and how to re-install it.
 - **Document operational decisions inline.** When you make a non-obvious choice — picked a non-default port, used a specific systemd unit name, mounted a directory in a particular place — note it in `/home/clouve-ops/NOTES.md` (one line per decision, prefixed with ISO-8601 date).
+
+## Publishing an HTTP service
+
+Anything you start inside this workspace that listens on a TCP port becomes reachable from the user's browser at:
+
+    https://<port>-<workspace-id>.studio.clouve.app/
+
+`<workspace-id>` is the literal pod name prefix `tkt-<id>`. You can read it from `$CLV_STUDIO_JWT_TKT_ID` on the Magneto Agent host. No registration step — any port the user's dev server binds is immediately reachable.
+
+**Bind to `0.0.0.0`, not `127.0.0.1`.** The proxy lives in a different pod from the workspace; loopback-only servers are unreachable. Concretely:
+
+| Tool | Default | Required override |
+|---|---|---|
+| Vite (`npm run dev`) | localhost | `--host 0.0.0.0` (or `server.host = true` in `vite.config.js`) |
+| Next.js (`next dev`) | localhost | `next dev -H 0.0.0.0` |
+| Flask (`flask run`) | 127.0.0.1 | `flask run --host 0.0.0.0` |
+| Express / Node `http.createServer` | varies | pass `'0.0.0.0'` as the second arg to `.listen()` |
+| Python `-m http.server` | 0.0.0.0 | no change |
+
+When you start a service, tell the user the URL: e.g. "Vite is running at `https://5173-tkt-9f2c.studio.clouve.app/`."
+
+The proxy enforces the same Magneto Agent login as the chat UI. Authentication, TLS, and WebSocket upgrades (HMR, Storybook hot reload, gRPC over h2c) are handled by the proxy — your dev server just speaks plain HTTP.
+
+## Publishing raw TCP via SSH tunnel
+
+For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.studio.clouve.app`. The user opens:
+
+    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.studio.clouve.app
+
+The NodePort number is assigned at deploy time. You can read it from inside the magneto-agent container via:
+
+    kubectl get svc -n org-<org_id>-tkt-<id> tkt-<id>-ai-studio -o jsonpath='{.spec.ports[?(@.name=="ssh")].nodePort}'
+
+(The agent has read access via its ServiceAccount.) Tell the user the full `ssh -L` command including the assigned port when they ask for raw-TCP access.
 
 ## Maintaining this skill
 
