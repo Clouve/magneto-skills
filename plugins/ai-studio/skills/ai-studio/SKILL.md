@@ -80,7 +80,9 @@ Persistent storage is **per pod**. If the user spins down the app and spins up a
 
 Anything you start inside this workspace that listens on a TCP port becomes reachable from the user's browser at:
 
-    https://<port>-<workspace-id>.studio.clouve.app/
+    https://<port>-<workspace-id>.<base>/
+
+where `<base>` is the per-environment clv-proxy host — `dev.clouve.ai` (develop), `demo.clouve.ai` (uat), `clouve.ai` (prod). The examples below use `dev.clouve.ai`.
 
 `<workspace-id>` is the literal pod name prefix `tkt-<id>`. You can read it from `$CLV_STUDIO_JWT_TKT_ID` on the Magneto Agent host. No registration step — any port the user's dev server binds is immediately reachable.
 
@@ -94,15 +96,15 @@ Anything you start inside this workspace that listens on a TCP port becomes reac
 | Express / Node `http.createServer` | varies | pass `'0.0.0.0'` as the second arg to `.listen()` |
 | Python `-m http.server` | 0.0.0.0 | no change |
 
-When you start a service, tell the user the URL: e.g. "Vite is running at `https://5173-tkt-9f2c.studio.clouve.app/`."
+When you start a service, tell the user the URL: e.g. "Vite is running at `https://5173-tkt-9f2c.dev.clouve.ai/`."
 
 The proxy enforces the same Magneto Agent login as the chat UI. Authentication, TLS, and WebSocket upgrades (HMR, Storybook hot reload, gRPC over h2c) are handled by the proxy — your dev server just speaks plain HTTP.
 
 ## Publishing raw TCP via SSH tunnel
 
-For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.studio.clouve.app`. The user opens:
+For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.<base>` (per-environment, e.g. `nodes.dev.clouve.ai`). The user opens:
 
-    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.studio.clouve.app
+    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.dev.clouve.ai
 
 The NodePort number is assigned at deploy time. You can read it from inside the magneto-agent container via:
 
