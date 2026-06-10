@@ -2,7 +2,7 @@
 name: mern
 description: Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. Use when the user describes a Node.js / Express backend, a React frontend, MongoDB persistence, or any combination thereof — including phrases like 'MERN', 'Mongo', 'Express', 'Next.js app', 'React app', 'npm', 'pnpm', 'yarn', 'package.json', 'systemd unit for node', 'pm2', or 'mongoose'. Do not use for non-Node web stacks (PHP, Python, Go, Ruby) or for cloud-hosted MongoDB Atlas administration.
 type: devops
-version: 0.1.0
+version: 0.2.0
 authoredAgainst: nodejs 22 (LTS), mongodb 7.0
 ---
 
@@ -34,16 +34,22 @@ Use this skill when the user wants to build, run, or operate a MERN-stack app (N
 ├── backend/                  Express app — package.json, src/, .env
 ├── frontend/                 React + Vite app — package.json, src/, vite.config.*
 ├── README.md                 user-facing; what the app does
-└── NOTES.md                  your decisions: ports, systemd unit names, env-var sources (one line each)
+└── NOTES.md                  your decisions: ports, service (unit/program) names, env-var sources (one line each)
 ```
 
 Monorepo (`backend/` + `frontend/` under one project dir) is the default. Two-repo split is fine if the user asks for it. `~/projects/<slug>/` is the convention; substitute the user's preferred directory if they have one (e.g. `/srv/www/<slug>/`, `/opt/<slug>/`).
 
+On the Clouve AI Studio workspace this layout ships **pre-seeded as a running starter project** (Express API + Vite React frontend + one Mongo collection, all supervised) — extend that project rather than scaffolding a new one unless the user asks for a separate app.
+
+## Process supervision: systemd or supervisord
+
+This skill's service-management steps depend on the host's init system. Check once with `command -v systemctl && systemctl is-system-running 2>/dev/null` — on hosts where systemd is absent or not PID 1 (notably the **Clouve AI Studio workspace, where supervisord is PID 1 and `systemctl` fails**), substitute the supervisord variants given alongside each systemd step below. On AI Studio, program confs belong in `/opt/clouve/supervisord.d/` (persistent across pod restarts); the seeded starter project is the living example of every pattern in this skill.
+
 ## Backend (Express) — production shape
 
-1. **Bind Express to `127.0.0.1:<port>`, not `0.0.0.0`,** unless the user explicitly wants the backend reachable from outside the host. Binding to all interfaces invites accidents on systems with weak firewall rules. For external access, run nginx (or another reverse-proxy) in front of Express and terminate TLS there.
+1. **Bind Express to `127.0.0.1:<port>`, not `0.0.0.0`,** unless the user explicitly wants the backend reachable from outside the host. Binding to all interfaces invites accidents on systems with weak firewall rules. For external access, run nginx (or another reverse-proxy) in front of Express and terminate TLS there. **Exception — AI Studio:** services the user should reach in a browser must bind `0.0.0.0`, because the clv-proxy that publishes them lives in a different pod; the ai-studio skill's "Publishing an HTTP service" table governs there, and auth is enforced by the proxy.
 
-2. **Run long-lived backends under systemd.** A backend started with `&` in an interactive shell dies when the shell exits. Drop a unit file at `/etc/systemd/system/<slug>-backend.service`:
+2. **Run long-lived backends under the host's supervisor.** A backend started with `&` in an interactive shell dies when the shell exits. On systemd hosts, drop a unit file at `/etc/systemd/system/<slug>-backend.service`:
 
    ```ini
    [Unit]
@@ -66,9 +72,24 @@ Monorepo (`backend/` + `frontend/` under one project dir) is the default. Two-re
 
    Then `sudo systemctl daemon-reload && sudo systemctl enable --now <slug>-backend`. Set `User=` to the account that owns the project directory; never run as root.
 
-3. **Logs via journalctl** — `journalctl -u <slug>-backend -f` for live tail, `journalctl -u <slug>-backend --since '5 minutes ago'` for recent.
+   On supervisord hosts (AI Studio), drop a program conf at `/opt/clouve/supervisord.d/<slug>-backend.conf` instead:
 
-4. **`.env` lives at `backend/.env`, gitignored, mode `0600`,** owned by the same user the systemd unit runs as. Required keys: `PORT`, `MONGO_URL` (default `mongodb://127.0.0.1:27017/<slug>`), `NODE_ENV=production`. Add app-specific keys as needed (`JWT_SECRET`, `SESSION_SECRET`, third-party API keys).
+   ```ini
+   [program:<slug>-backend]
+   command=/usr/bin/node --env-file=.env src/server.js
+   directory=/path/to/<slug>/backend
+   user=<run-as-user>
+   environment=HOME="/home/<run-as-user>",USER="<run-as-user>"
+   autorestart=true
+   redirect_stderr=true
+   stdout_logfile=/var/log/supervisor/<slug>-backend.log
+   ```
+
+   Then `sudo supervisorctl reread && sudo supervisorctl update`. supervisord has no `EnvironmentFile=` — load `.env` in the command itself (`node --env-file=.env`, Node ≥ 20.6) or enumerate vars in `environment=`.
+
+3. **Logs** — systemd hosts: `journalctl -u <slug>-backend -f` for live tail, `journalctl -u <slug>-backend --since '5 minutes ago'` for recent. supervisord hosts: `sudo supervisorctl tail -f <slug>-backend`, or read `/var/log/supervisor/<slug>-backend.log`.
+
+4. **`.env` lives at `backend/.env`, gitignored, mode `0600`,** owned by the same user the service (systemd unit or supervisord program) runs as. Required keys: `PORT`, `MONGO_URL` (default `mongodb://127.0.0.1:27017/<slug>`), `NODE_ENV=production`. Add app-specific keys as needed (`JWT_SECRET`, `SESSION_SECRET`, third-party API keys).
 
 5. **Never echo, log, or commit secrets.** If the user pastes a secret in chat, write it to `.env` only, then verify presence with `grep -c '^KEY=' .env` rather than reading the value back. Keep `.env` in `.gitignore` and never `git add` it.
 
@@ -87,7 +108,7 @@ Monorepo (`backend/` + `frontend/` under one project dir) is the default. Two-re
 
 3. **Alternative: separate static server.** If the user wants nginx serving `dist/` on one port and Express on another (clearer separation, easier to tune caching headers), add an nginx `server` block for the frontend and a second systemd unit if needed. Rebuild the frontend (`npm run build`) on every deploy.
 
-4. **Dev:** `npm run dev` runs Vite's dev server with HMR. Useful when iterating with the user attached to a shell, but it's not a production runtime — never wire it into systemd.
+4. **Dev:** `npm run dev` runs Vite's dev server with HMR. Useful when iterating with the user attached to a shell, but it's not a production runtime — never wire it into a unit/program conf on a production host. **Exception — dev workspaces (AI Studio):** there the dev server *is* the product being iterated on, and it runs supervised (the seeded `frontend` program) so HMR survives pod restarts.
 
 ## MongoDB — install and persistence
 
@@ -105,8 +126,10 @@ Monorepo (`backend/` + `frontend/` under one project dir) is the default. Two-re
        | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
    sudo apt-get update
    sudo apt-get install -y mongodb-org
-   sudo systemctl enable --now mongod
+   sudo systemctl enable --now mongod   # systemd hosts
    ```
+
+   On supervisord hosts, instead of the `systemctl` line add a `[program:mongod]` conf (`command=/usr/bin/mongod --config /etc/mongod.conf`, `user=mongodb`) and `sudo supervisorctl reread && sudo supervisorctl update`. **On the AI Studio workspace skip this whole step — MongoDB 7.0 is pre-installed and already supervised as program `mongod`.**
 
 2. **Data persists at `/var/lib/mongodb/`** (the apt-installed default). Make sure `/var` is on storage that survives reboots — on most Linux hosts this is automatic; on some container-based or ephemeral environments it isn't.
 
@@ -118,10 +141,10 @@ Monorepo (`backend/` + `frontend/` under one project dir) is the default. Two-re
 
 Before reporting "MERN app is running" to the user, confirm all four:
 
-1. `systemctl is-active mongod <slug>-backend` returns `active` for both services.
+1. Both services are up — systemd hosts: `systemctl is-active mongod <slug>-backend` returns `active` for both; supervisord hosts: `sudo supervisorctl status mongod <slug>-backend` shows `RUNNING` for both.
 2. `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:<port>/` returns a 2xx — or the expected response code for the route you're probing.
 3. `mongosh --eval "use <slug>; db.stats()"` shows the right database (non-empty `db` field, expected `collections` count).
-4. `journalctl -u <slug>-backend --since '5 minutes ago' | grep -iE 'error|fail|exception'` is empty (or only matches expected/benign lines).
+4. The backend log is clean — systemd hosts: `journalctl -u <slug>-backend --since '5 minutes ago' | grep -iE 'error|fail|exception'`; supervisord hosts: `sudo tail -n 200 /var/log/supervisor/<slug>-backend.log | grep -iE 'error|fail|exception'` — empty (or only matches expected/benign lines).
 
 If any of those four fails, you are NOT done. Report what failed and propose the next step. Don't claim success without evidence.
 
