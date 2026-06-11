@@ -80,11 +80,18 @@ Persistent storage is **per pod**. If the user spins down the app and spins up a
 
 Anything you start inside this workspace that listens on a TCP port becomes reachable from the user's browser at:
 
-    https://<port>-<workspace-id>.<base>/
+    https://<port>-${CLV_STUDIO_JWT_TKT_ID}.${CLV_STUDIO_BASE_HOST}/
 
-where `<base>` is the per-environment clv-proxy host — `dev.clouve.ai` (develop), `demo.clouve.ai` (uat), `clouve.ai` (prod). The examples below use `dev.clouve.ai`.
+**Both halves are environment variables on this Magneto Agent host — read them, never hardcode or guess the domain.** They are injected per environment at deploy time, so the URL is correct everywhere:
 
-`<workspace-id>` is the literal pod name prefix `tkt-<id>`. You can read it from `$CLV_STUDIO_JWT_TKT_ID` on the Magneto Agent host. No registration step — any port the user's dev server binds is immediately reachable.
+- `$CLV_STUDIO_JWT_TKT_ID` — the workspace id, the literal pod-name prefix `tkt-<id>` (e.g. `tkt-9f2c`).
+- `$CLV_STUDIO_BASE_HOST` — the per-environment clv-proxy host (e.g. `e2e.clouve.ai`, `dev.clouve.ai`, `demo.clouve.ai`, `clouve.ai`).
+
+Build the URL straight from them, e.g. for a service on port 5173:
+
+    printf 'https://%s-%s.%s/\n' 5173 "$CLV_STUDIO_JWT_TKT_ID" "$CLV_STUDIO_BASE_HOST"
+
+No registration step — any port the user's dev server binds is immediately reachable.
 
 **Bind to `0.0.0.0`, not `127.0.0.1`.** The proxy lives in a different pod from the workspace; loopback-only servers are unreachable. Concretely:
 
@@ -96,19 +103,19 @@ where `<base>` is the per-environment clv-proxy host — `dev.clouve.ai` (develo
 | Express / Node `http.createServer` | varies | pass `'0.0.0.0'` as the second arg to `.listen()` |
 | Python `-m http.server` | 0.0.0.0 | no change |
 
-When you start a service, tell the user the URL: e.g. "Vite is running at `https://5173-tkt-9f2c.dev.clouve.ai/`."
+When you start a service, build the URL from those env vars and tell the user — e.g. when `$CLV_STUDIO_JWT_TKT_ID` is `tkt-9f2c` and `$CLV_STUDIO_BASE_HOST` is `dev.clouve.ai`: "Vite is running at `https://5173-tkt-9f2c.dev.clouve.ai/`."
 
 The proxy enforces the same Magneto Agent login as the chat UI. Authentication, TLS, and WebSocket upgrades (HMR, Storybook hot reload, gRPC over h2c) are handled by the proxy — your dev server just speaks plain HTTP.
 
 ## Publishing raw TCP via SSH tunnel
 
-For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.<base>` (per-environment, e.g. `nodes.dev.clouve.ai`). The user opens:
+For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.$CLV_STUDIO_BASE_HOST` (per-environment, e.g. `nodes.dev.clouve.ai`). The user opens:
 
-    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.dev.clouve.ai
+    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.${CLV_STUDIO_BASE_HOST}
 
-The NodePort number is assigned at deploy time. You can read it from inside the magneto-agent container via:
+The NodePort number is assigned at deploy time. The workspace Service is headless (so the proxy can reach any dev-server port); the external sshd NodePort lives on its sibling Service `<tkt-id>-ai-studio-ssh`. Read the assigned port from inside the magneto-agent container — namespace and names come from the same env vars:
 
-    kubectl get svc -n org-<org_id>-tkt-<id> tkt-<id>-ai-studio -o jsonpath='{.spec.ports[?(@.name=="ssh")].nodePort}'
+    kubectl get svc -n "org-${CLV_STUDIO_JWT_ORG_ID}-${CLV_STUDIO_JWT_TKT_ID}" "${CLV_STUDIO_JWT_TKT_ID}-ai-studio-ssh" -o jsonpath='{.spec.ports[?(@.name=="ssh")].nodePort}'
 
 (The agent has read access via its ServiceAccount.) Tell the user the full `ssh -L` command including the assigned port when they ask for raw-TCP access.
 
