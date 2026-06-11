@@ -107,17 +107,14 @@ When you start a service, build the URL from those env vars and tell the user �
 
 The proxy enforces the same Magneto Agent login as the chat UI. Authentication, TLS, and WebSocket upgrades (HMR, Storybook hot reload, gRPC over h2c) are handled by the proxy — your dev server just speaks plain HTTP.
 
-## Publishing raw TCP via SSH tunnel
+## Raw TCP / SSH is not available
 
-For non-HTTP traffic (Postgres clients, IDE remote attach), the proxy can't help — the path is SSH local-forwarding. The cluster publishes this workspace's sshd at a NodePort fronted by `nodes.$CLV_STUDIO_BASE_HOST` (per-environment, e.g. `nodes.dev.clouve.ai`). The user opens:
+Only **HTTP(S) through clv-proxy** is exposed to the user. There is no external SSH or raw-TCP path into the workspace — the Service is headless with no NodePort, by design. If a user asks to reach a non-HTTP service (a Postgres client, IDE remote-attach, a raw socket), explain that direct TCP access isn't offered and give them an HTTP-based alternative instead:
 
-    ssh -L <local-port>:localhost:<workspace-port> -p <NodePort> clouve-ops@nodes.${CLV_STUDIO_BASE_HOST}
+- Put a small HTTP layer in front of it and publish that port (e.g. a DB admin UI like Adminer/pgweb/mongo-express, a REST endpoint, a web terminal such as ttyd) — any HTTP/WebSocket/h2c service is reachable at the `https://<port>-…` URL above.
+- For database inspection specifically, prefer a browser DB UI over a native client.
 
-The NodePort number is assigned at deploy time. The workspace Service is headless (so the proxy can reach any dev-server port); the external sshd NodePort lives on its sibling Service `<tkt-id>-ai-studio-ssh`. Read the assigned port from inside the magneto-agent container — namespace and names come from the same env vars:
-
-    kubectl get svc -n "org-${CLV_STUDIO_JWT_ORG_ID}-${CLV_STUDIO_JWT_TKT_ID}" "${CLV_STUDIO_JWT_TKT_ID}-ai-studio-ssh" -o jsonpath='{.spec.ports[?(@.name=="ssh")].nodePort}'
-
-(The agent has read access via its ServiceAccount.) Tell the user the full `ssh -L` command including the assigned port when they ask for raw-TCP access.
+Do not attempt to expose sshd or instruct the user to `ssh` in — there is no published SSH endpoint.
 
 ## Maintaining this skill
 
