@@ -1,6 +1,6 @@
 {
   "name": "mern",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. Use when the user describes a Node.js / Express backend, a React frontend, MongoDB persistence, or any combination thereof — including phrases like 'MERN', 'Mongo', 'Express', 'Next.js app', 'React app', 'npm', 'pnpm', 'yarn', 'package.json', 'systemd unit for node', 'pm2', or 'mongoose'. Do not use for non-Node web stacks (PHP, Python, Go, Ruby) or for cloud-hosted MongoDB Atlas administration.",
   "author": {
     "name": "Clouve",
