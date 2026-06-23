@@ -3,7 +3,7 @@
 #
 # Invoked by Magneto Agent's plugin-stager after the plugin payload is staged
 # at /clouve/skills/moodle/plugin/. The contract for hooks is documented in
-# https://github.com/Clouve/magneto/blob/main/apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh
+# https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/marketplace/plugin-stager.sh
 #
 # What this installs and why:
 #   default-mysql-client (mysql, mysqldump) — scripts/backup.sh and the
