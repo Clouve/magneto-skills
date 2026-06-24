@@ -42,13 +42,6 @@ If the directory is missing, the module has not been placed on the volume. Stage
 kubectl cp /path/to/<mod> <odoo-pod>:/mnt/extra-addons/<mod>
 ```
 
-Also verify the module appears in Odoo's addon scan:
-
-```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo -c /etc/odoo/odoo.conf --list-apps 2>/dev/null | grep '<mod>'"
-```
-
 ### 3. Stop the running Odoo service
 
 Module install/upgrade acquires an exclusive registry lock. The running server must be stopped first to avoid conflicts.
@@ -81,11 +74,11 @@ Alternatively, use the dedicated `module` subcommand (no `--stop-after-init` nee
 ```bash
 # Install
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo module install -d <db> <mod>"
+  "sudo odoo module install -c /etc/odoo/odoo.conf -d <db> <mod>"
 
 # Upgrade
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo module upgrade -d <db> <mod>"
+  "sudo odoo module upgrade -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 
 ### 5. Restart the Odoo service
@@ -131,7 +124,7 @@ proceeding.
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo module uninstall -d <db> <mod>"
+  "sudo odoo module uninstall -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 
 ## Do NOT
