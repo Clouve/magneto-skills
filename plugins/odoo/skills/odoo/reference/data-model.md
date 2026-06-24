@@ -21,6 +21,7 @@ The `state` column drives the entire module install/upgrade/uninstall lifecycle.
 
 Allowed states (`ir_module.py:142–146`):
 ```
+uninstallable → Uninstallable (default; dependencies unmet or not on addons_path)
 uninstalled  → Not Installed
 installed    → Installed
 to install   → To be installed

@@ -115,9 +115,9 @@ Never install an addon from an untrusted source onto a database that holds produ
 ## State machine reference
 
 ```
-uninstalled ──[install]──► to install ──[load]──► installed
-installed   ──[upgrade]──► to upgrade ──[load]──► installed
-installed   ──[uninstall]► to remove  ──[load]──► uninstalled (+ DROP TABLE CASCADE)
+uninstallable ──[resolve deps]──► uninstalled ──[install]──► to install ──[load]──► installed
+                                  installed   ──[upgrade]──► to upgrade ──[load]──► installed
+                                  installed   ──[uninstall]► to remove  ──[load]──► uninstalled (+ DROP TABLE CASCADE)
 ```
 
-The registry only loads modules in state `installed`. Modules in any `to *` state are processed during the next `load_modules()` pass and then transition to `installed` or `uninstalled`. (`ir_module.py:142–146, 303`)
+The registry only loads modules in state `installed`. Modules in `uninstallable` cannot be installed until dependencies are met or the module is placed on `addons_path`; it is the default state. Modules in any `to *` state are processed during the next `load_modules()` pass and then transition to `installed` or `uninstalled`. (`ir_module.py:142–146, 303`)
