@@ -2,7 +2,7 @@
 
 ## Database manager routes
 
-All 8 `/web/database/*` routes are declared `auth='none'` — they require no session,
+All 9 `/web/database/*` routes are declared `auth='none'` — they require no session,
 no user, no API key. They are reachable by any HTTP client that can reach the Odoo port
 (`addons/web/controllers/database.py:59-186`):
 
