@@ -71,17 +71,24 @@ cat fix.py | SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOS
 
 ### Reverse a posted entry (preferred method)
 
-The correct undo for any posted `account.move` is a reversal, which creates a sign-flipped entry and links it to the original:
+The correct undo for any posted `account.move` is a reversal, which creates a sign-flipped entry and links it to the original.
+
+**Important:** bare `_reverse_moves()` (default `cancel=False`) creates the reverse move in **DRAFT** — it does NOT auto-post or auto-reconcile. Use `cancel=True` to post and reconcile in one step, or use the UI wizard (`action_reverse()`) which is the fully-supported path.
 
 ```python
-# In odoo shell:
+# In odoo shell — recommended: cancel=True posts and reconciles in one step:
 move = env['account.move'].browse(123)
 print(move.name, move.state, move.amount_total)   # confirm before reversing
-move._reverse_moves()
+move._reverse_moves(cancel=True)
+env.cr.commit()
+
+# Or bare _reverse_moves() returns a DRAFT you must post separately:
+reverse = move._reverse_moves()
+reverse.action_post()
 env.cr.commit()
 ```
 
-Or trigger via the UI: open the journal entry and click the "Reverse" button (`action_reverse()`).
+Or trigger via the UI: open the journal entry and click the "Reverse" button (`action_reverse()`), which runs the `account.move.reversal` wizard and handles posting + reconciliation.
 
 ### Cancel a draft or cancellable entry
 
@@ -113,11 +120,13 @@ print('hard_lock_date:', company.hard_lock_date)
 | `account_move` | Hash chain, sequence, lock dates — ORM-only |
 | `account_move_line` | Hash chain fields, gapless sequence — ORM-only |
 | `ir_model_data` | External ID registry — ORM-only (removing an xmlid orphans all references) |
+| `ir_model` / `ir_model_fields` | ORM registry metadata — raw edits corrupt the Python registry |
 | `ir_sequence` | Sequence counters — ORM-only (gaps are a compliance violation in many jurisdictions) |
-| `ir_config_parameter` (accounting keys) | `hard_lock_date`, `base.partially_updated_database`, hash-related parameters — ORM-only |
+| `ir_config_parameter` (protected keys) | `database.secret`, `database.uuid`, `database.create_date`, `web.base.url`, `base.login_cooldown_*`, hash-related parameters — ORM-only |
 | `ir_module_module.state` | Module state machine — use `button_reset_state()` or `reset_modules_state()` only |
+| Filestore (`/var/lib/odoo/filestore/<db>/`) | Content-addressed by SHA-1; deleting or renaming files orphans attachments silently — manage only via `ir.attachment` ORM or `odoo-bin db dump/load` |
 
-For accounting tables: use `_reverse_moves()` or `button_cancel()` instead of any SQL. For `ir_model_data`: use `env['ir.model.data'].search(...).unlink()` if a record truly needs removing, and confirm with the tenant. For sequences: never touch `ir_sequence` rows directly.
+For accounting tables: use `_reverse_moves(cancel=True)` or `button_cancel()` instead of any SQL. For `ir_model_data`: use `env['ir.model.data'].search(...).unlink()` if a record truly needs removing, and confirm with the tenant. For sequences: never touch `ir_sequence` rows directly. Note: `base.partially_updated_database` is deliberately deleted during stuck-module recovery (see [playbooks/recover-stuck-module-state.md](recover-stuck-module-state.md)) — it is NOT a protected key.
 
 ## Verification after a fix
 

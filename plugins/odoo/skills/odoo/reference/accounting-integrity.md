@@ -157,15 +157,34 @@ The correct undo mechanisms, in order of preference:
 
 `_reverse_moves()` (`account_move.py:5441-5485`) creates a new entry with all amounts
 sign-flipped and links it to the original via `reversed_entry_id`. The original entry
-stays in the ledger. The new reverse entry is posted and reconciled against the original,
-netting them to zero. This is the audit-safe undo for any posted entry.
+stays in the ledger.
+
+**Important:** bare `_reverse_moves()` (default `cancel=False`) creates the reverse move
+in **DRAFT** state. It does NOT auto-post or auto-reconcile. You must post it separately
+and then reconcile it against the original if needed. To create, post, and reconcile in
+one call, pass `cancel=True`:
+
+```python
+move._reverse_moves(cancel=True)
+# cancel=True: posts the reverse move and reconciles it against the original,
+# netting them to zero.
+```
+
+The **recommended path** is the UI wizard or `action_reverse()`, which handles posting and
+reconciliation through the supported `account.move.reversal` wizard flow
+(`account_move.py:6093`).
 
 Trigger via UI: the "Reverse" button, or `action_reverse()` (`account_move.py:6093`).
 
 ```python
-# From odoo shell (only if genuinely needed):
+# From odoo shell — use cancel=True to post and reconcile in one step:
 move = env['account.move'].browse(123)
-move._reverse_moves()
+move._reverse_moves(cancel=True)
+env.cr.commit()
+
+# Or bare _reverse_moves() returns a DRAFT reversal you must post separately:
+reverse = move._reverse_moves()
+reverse.action_post()
 env.cr.commit()
 ```
 

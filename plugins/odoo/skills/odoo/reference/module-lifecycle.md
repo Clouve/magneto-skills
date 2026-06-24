@@ -21,12 +21,13 @@ Both `-i` and `-u` **require `-d`** (database name). They are CLI-only operation
 
 ### Dedicated `module` subcommand (preferred for scripted use)
 
-Source: `odoo/cli/module.py` — registered as the `module` subcommand with three sub-subcommands.
+Source: `odoo/cli/module.py` — registered as the `module` subcommand with four sub-subcommands.
 
 ```bash
-odoo-bin module install   -d <dbname> <module> [<module>...]
-odoo-bin module upgrade   -d <dbname> <module>|all [--outdated]
-odoo-bin module uninstall -d <dbname> <module> [<module>...]
+odoo-bin module install    -d <dbname> <module> [<module>...]
+odoo-bin module upgrade    -d <dbname> <module>|all [--outdated]
+odoo-bin module uninstall  -d <dbname> <module> [<module>...]
+odoo-bin module force-demo -d <dbname>          # installs demo data (development only)
 ```
 
 The subcommand always passes `--no-http` internally (`module.py`: `config_args = ['--no-http']`), so no HTTP server is started. It also enforces a **single database** — the parser errors out if more than one DB name is resolved from the config (`module.py`: `if not db_names or len(db_names) > 1: self.parser.error(...)`).

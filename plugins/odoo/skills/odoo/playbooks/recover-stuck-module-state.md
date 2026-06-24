@@ -94,13 +94,13 @@ print('Flag cleared.')
 EOF"
 ```
 
-## Step 5: Restart Odoo and re-run the upgrade
+## Step 5: Recycle the pod and re-run the upgrade
 
-After resetting states, restart the Odoo service:
+After resetting states, recycle the pod (Odoo is PID 1 in this container — there is no systemd or supervisor; see SKILL.md rule #7):
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo systemctl restart odoo || sudo supervisorctl restart odoo"
+kubectl rollout restart deployment/<odoo-deployment>
+kubectl rollout status deployment/<odoo-deployment>
 ```
 
 Then re-run the module upgrade that was interrupted (see [playbooks/install-or-upgrade-module.md](install-or-upgrade-module.md)):

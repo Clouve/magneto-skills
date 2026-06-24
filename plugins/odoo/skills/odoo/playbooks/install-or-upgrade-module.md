@@ -42,13 +42,16 @@ If the directory is missing, the module has not been placed on the volume. Stage
 kubectl cp /path/to/<mod> <odoo-pod>:/mnt/extra-addons/<mod>
 ```
 
-### 3. Stop the running Odoo service
+### 3. Run the install or upgrade as a one-shot maintenance action
 
-Module install/upgrade acquires an exclusive registry lock. The running server must be stopped first to avoid conflicts.
+The one-shot `odoo --stop-after-init` invocation connects to the database independently and acquires the exclusive registry lock on `ir_module_module`. While it runs, the live Odoo pod is still up — it will contend for the same lock. **Treat this as a maintenance window**: recycle the pod immediately before running the one-shot so the live server releases its lock, then recycle again after to resume serving on the upgraded code.
+
+**Recycle the pod (maintenance window starts):**
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo systemctl stop odoo || sudo supervisorctl stop odoo"
+kubectl rollout restart deployment/<odoo-deployment>
+# Wait for the pod to be Running before continuing
+kubectl rollout status deployment/<odoo-deployment>
 ```
 
 ### 4. Run the install or upgrade (one-shot)
@@ -81,19 +84,17 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo module upgrade -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 
-### 5. Restart the Odoo service
+### 5. Recycle the pod to resume serving
+
+After `--stop-after-init` exits cleanly, recycle the pod so the live server starts on the upgraded code:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo systemctl start odoo || sudo supervisorctl start odoo"
+kubectl rollout restart deployment/<odoo-deployment>
+kubectl rollout status deployment/<odoo-deployment>
+# Wait until the new pod is Running and Ready before verifying.
 ```
 
-Wait ~10 seconds and verify the process is up:
-
-```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo systemctl status odoo || sudo supervisorctl status odoo"
-```
+Odoo is PID 1 in this container — there is no systemd or supervisor. A "restart" is always a pod recycle (see SKILL.md rule #7).
 
 ### 6. Verify the module state
 
