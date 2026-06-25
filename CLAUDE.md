@@ -34,7 +34,7 @@ Plugin names are lowercase kebab-case (`[a-z0-9-]+`). The plugin's directory nam
 
 ### Optional: per-plugin runtime install hook
 
-A plugin that needs runtime apt packages, binaries, or other host-side state on the [Magneto Agent](https://github.com/Clouve/magneto-agent) container may ship an `install.sh` at the plugin root (`plugins/<plugin-name>/install.sh`). Magneto Agent's marketplace plugin-stager runs it after staging the payload, on every container start. Both `gibbon` and `moodle` use this to pull in `default-mysql-client`, `openssh-client`, and `sshpass` (which the skills' scripts shell out to) without bloating the upstream Magneto Agent image.
+A plugin that needs runtime apt packages, binaries, or other host-side state on the [Magneto Agent](https://github.com/Clouve/magneto-agent) container may ship an `install.sh` at the plugin root (`plugins/<plugin-name>/install.sh`). Magneto Agent's marketplace plugin-stager runs it after staging the payload, on every container start. `gibbon`, `moodle`, and `ai-studio` use this without bloating the upstream Magneto Agent image: `gibbon` and `moodle` pull in `default-mysql-client`, `openssh-client`, and `sshpass`; `ai-studio` pulls in only `openssh-client` and `sshpass` (no mysql-client). These are what the skills' scripts shell out to.
 
 Contract:
 

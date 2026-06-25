@@ -1,9 +1,9 @@
 #!/bin/bash
 # Gibbon plugin — runtime install hook.
 #
-# Invoked by AI Studio's plugin-stager after the plugin payload is staged
+# Invoked by Magneto Agent's plugin-stager after the plugin payload is staged
 # at /clouve/skills/gibbon/plugin/. The contract for hooks is documented in
-# https://github.com/Clouve/magneto/blob/main/apps/ai-studio/image/installer/chat/marketplace/plugin-stager.sh
+# https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/marketplace/plugin-stager.sh
 #
 # What this installs and why:
 #   default-mysql-client (mysql, mysqldump) — scripts/backup.sh and the
@@ -13,7 +13,7 @@
 #       gibbon-mysql containers as the clouve-ops operator account using
 #       `sshpass -e ssh …` with the per-pod password from CLOUVE_OPS_PASSWORD.
 #
-# These do not belong in the upstream AI Studio image: no other consumer
+# These do not belong in the upstream Magneto Agent image: no other consumer
 # needs them, and shipping sshpass by default expands the platform's attack
 # surface for tenants that don't use SSH-based ops at all. They live here
 # so the deps travel with the skill that needs them.

@@ -35,8 +35,10 @@ For Gemini CLI, OpenAI Codex CLI, or other clients, use the [Magneto Agent](#mag
 
 | Plugin | Category | Version | Description |
 | --- | --- | --- | --- |
+| `ai-studio` | DevOps | 0.2.0 | Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — install software, write code, run supervised services, debug, and verify. |
 | `gibbon` | DevOps | 0.1.0 | Safely operate a Gibbon (gibbonedu) school-management install — upgrades, module installs, backups/restores, year rollover, hardening, diagnosing 500s. |
-| `moodle` | DevOps | 0.1.0 | Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
+| `mern` | DevOps | 0.2.0 | Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. |
+| `moodle` | DevOps | 0.1.1 | Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
 
 ## On-disk layout
 
@@ -45,6 +47,8 @@ magneto-skills/
 ├── .claude-plugin/
 │   └── marketplace.json          # marketplace catalog (every plugin listed here)
 ├── plugins/
+│   ├── ai-studio/
+│   │   └── …                     # same shape as gibbon (also ships install.sh)
 │   ├── gibbon/
 │   │   ├── .claude-plugin/
 │   │   │   └── plugin.json       # plugin manifest
@@ -56,6 +60,8 @@ magneto-skills/
 │   │           ├── playbooks/
 │   │           ├── reference/
 │   │           └── scripts/
+│   ├── mern/
+│   │   └── …                     # same shape as gibbon, but no install.sh
 │   └── moodle/
 │       └── …                     # same shape as gibbon (also ships install.sh)
 ├── CHANGELOG.md
