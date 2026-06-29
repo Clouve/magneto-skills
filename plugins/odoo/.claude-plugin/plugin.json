@@ -1,0 +1,9 @@
+{
+  "name": "odoo",
+  "version": "0.1.0",
+  "description": "Safely operate an Odoo 19.0 ERP install — install/upgrade modules, filestore-aware backups and restores, prod→staging neutralization, database-manager hardening, and diagnosing module/upgrade failures — without corrupting accounting or framework data. Use when the user is running the Clouve Odoo app, mentions \"Odoo\", `odoo-bin`, `odoo.conf`, the master password, `account.move`, `ir_model_data`, `ir.config_parameter`, the filestore, or `/web/database/manager`. Do not use for generic Python/PostgreSQL/Linux questions that are not tied to an Odoo instance.",
+  "author": {
+    "name": "Clouve",
+    "url": "https://clouve.com"
+  }
+}
