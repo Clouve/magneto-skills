@@ -1,0 +1,9 @@
+{
+  "name": "wordpress",
+  "version": "0.1.0",
+  "description": "Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions \"WordPress\", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.",
+  "author": {
+    "name": "Clouve",
+    "url": "https://clouve.com"
+  }
+}
