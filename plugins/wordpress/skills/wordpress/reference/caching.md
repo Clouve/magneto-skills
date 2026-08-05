@@ -1,0 +1,90 @@
+# Caching in WordPress
+
+"Purge the cache" means five different things in WordPress, living in five different places, reachable over different channels. When a user says "clear the cache", establish **which layer** before running anything.
+
+| Layer | Lives in | You can reach it via |
+|---|---|---|
+| Transients | `wp_options` table (usually) | **[TCP-mysql]** — always |
+| Object cache | Redis/Memcached, only if a drop-in exists | Not directly; neither Clouve shape ships one |
+| OPcache | PHP process memory | Container restart (platform) or **[shell-only]** |
+| Page-cache plugins | `wp-content/cache/` files + plugin logic | `/wp-admin` purge button (route user) |
+| Rewrite rules | `rewrite_rules` row in `wp_options` | `/wp-admin` permalinks save, or gated **[TCP-mysql]** |
+
+## Transients — the layer you can always reach
+
+Transients are WordPress's built-in expiring key-value cache, stored as option rows:
+
+| Row | Holds |
+|---|---|
+| `_transient_<key>` | The cached value (often serialized) |
+| `_transient_timeout_<key>` | Unix expiry timestamp (plain integer) |
+| `_site_transient_<key>` / `_site_transient_timeout_<key>` | Network-scoped variants — on single-site (the only Clouve shape) they live in `wp_options` too |
+
+A transient set **without** an expiration gets no `_timeout_` row and never expires — and is autoloaded on every request. Only rows *with* an expired timeout are dead weight, and deleting those (plus their value partners) is always semantically safe: transients are a cache by contract, and callers must handle a miss.
+
+Core cleans expired transients once daily via the `delete_expired_transients` wp-cron event — so on a starved-cron site (see [cron-and-tasks.md](cron-and-tasks.md)) they accumulate and bloat `wp_options`.
+
+**[TCP-mysql]** The audited cleanup is [flush-transients.sh](../scripts/flush-transients.sh): joins `_transient_timeout_*` rows against `UNIX_TIMESTAMP()`, deletes expired timeout+value pairs only, dry-run by default with counts. Multi-row `DELETE` on `wp_*` — the [SKILL.md](../SKILL.md) safety gate applies: show the dry-run counts to the user and get an ack before `--execute`.
+
+Do **not** hand-write broader deletes (e.g. `DELETE ... LIKE '_transient_%'`) — that nukes live, unexpired cache entries and, worse, `_` is a SQL wildcard so an unescaped pattern also matches rows you did not intend.
+
+## Object cache — only if a drop-in exists
+
+A persistent object cache exists only when a drop-in file `wp-content/object-cache.php` is installed (Redis Object Cache, Memcached plugins, etc.). **Neither Clouve shape ships a Redis/Memcached service**, so a drop-in is unlikely — but a user can have installed one that talks to an external service, so verify before assuming.
+
+Detection without a file channel is indirect:
+
+- **[TCP-mysql]** `SELECT option_value FROM wp_options WHERE option_name='active_plugins';` — look for `redis-cache`, `w3-total-cache`, `litespeed-cache` (these manage drop-ins).
+- **[shell-only — probe first]** `ls wp-content/object-cache.php` is the definitive check; no shell exists on today's images.
+
+**Honesty note:** when a persistent object cache is active, transients live in the object cache, **not** `wp_options` — the SQL cleanup above finds few/no rows and flushing means the drop-in's own purge (plugin's `/wp-admin` button, or `wp cache flush` with a shell). Zero transient rows on a busy site is itself evidence a drop-in is active.
+
+## OPcache — process memory, restart territory
+
+PHP's opcode cache lives inside the Apache/PHP processes (the official `wordpress` images both shapes build from enable it). It matters after **code** changes — plugin/theme file updates, core updates. Stale OPcache after a file-level change can serve old code until the process recycles.
+
+There is no TCP or HTTP path to it. Clearing it means:
+
+- A **container restart** — OPcache is empty on boot. Route the user to restart the app from their Clouve dashboard; never patch the deployment yourself ([SKILL.md](../SKILL.md) principle 11 territory is resources, but restarts too are the platform's lever).
+- **[shell-only — probe first]** `kill -USR2` on Apache / a graceful reload — not reachable today.
+
+In practice: plugin/theme updates done through `/wp-admin` invalidate changed files themselves (PHP checks file mtimes by default), so OPcache issues are rare and mostly follow out-of-band file edits — which also need a channel that doesn't exist today.
+
+## Page-cache plugins
+
+WP Super Cache, W3 Total Cache, LiteSpeed Cache, WP Rocket and friends store rendered HTML (typically under `wp-content/cache/`) and serve it before most of WordPress loads. Stale-page complaints ("I edited the page but visitors see the old one") are usually this layer.
+
+- **Detect [HTTP]:** response headers and footer comments give it away — `curl -sI http://<wordpress-host>/ | grep -iE 'cache|x-powered'` and `curl -s http://<wordpress-host>/ | tail -5` (many plugins append `<!-- Cached page generated by ... -->`).
+- **Detect [TCP-mysql]:** the plugin in `active_plugins` (query above).
+- **Purge:** each plugin's own `/wp-admin` purge button — **route the user**; there is no generic DB or HTTP purge, and deleting the plugin's cache files needs a file channel. With a shell (not today), most register wp-cli commands (`wp super-cache flush`, `wp w3-total-cache flush all`, `wp litespeed-purge all`).
+
+## Rewrite rules
+
+The compiled permalink routing table is one serialized row: `option_name='rewrite_rules'` in `wp_options`. Stale rules show up as 404s on pages/posts that clearly exist — classically after a plugin registering custom post types is added/removed.
+
+"Flush permalinks" regenerates it:
+
+- **Route the user (zero-risk):** `/wp-admin` → Settings → Permalinks → Save Changes. No edits needed; saving flushes.
+- **[shell-only — probe first]** `wp rewrite flush --hard --allow-root --path=/var/www/html` (Shape A image only).
+- **[TCP-mysql] fallback (gated):** deleting the row is safe — WordPress lazily regenerates it on the next request (this is what `flush_rewrite_rules()` does internally; deleting a whole cache row is not the forbidden serialized-byte edit of principle 6):
+
+  ```sql
+  DELETE FROM wp_options WHERE option_name = 'rewrite_rules';
+  ```
+
+  Print the statement, get the user's ack per the [SKILL.md](../SKILL.md) gates, then follow with a page load (**[HTTP]** `curl` any page) to trigger regeneration. Caveat: this covers the DB side only. A `--hard` flush also rewrites `.htaccess` — a file operation. On a standard setup the stock WordPress `.htaccess` block never changes, so the DB-side flush is normally sufficient; if `.htaccess` itself is damaged, that needs a file channel you don't have.
+
+On **Shape A**, note the entrypoint already runs `wp rewrite flush --hard` on every boot where the URL reconciler fires ([entrypoint source](https://github.com/Clouve/magneto/blob/develop/apps/wordpress/image/installer/entrypoint.sh)) — a container restart doubles as a permalink flush.
+
+## What "purge caches" translates to, per shape
+
+| Layer | Shape A (Clouve-packaged) — live path | Shape B (developer compose) — live path | With a shell (neither, today) |
+|---|---|---|---|
+| Expired transients | **[TCP-mysql]** [flush-transients.sh](../scripts/flush-transients.sh) | Same | `wp transient delete --expired` |
+| All transients | Only via drop-in/plugin UI; don't bulk-`DELETE` live rows without a specific reason + gate | Same | `wp transient delete --all` |
+| Object cache | Plugin's `/wp-admin` button (if any drop-in exists at all) | Same | `wp cache flush` |
+| OPcache | Container restart via platform | Same | Apache graceful reload |
+| Page cache | Plugin's `/wp-admin` purge button (route user) | Same | Plugin's wp-cli command |
+| Rewrite rules | `/wp-admin` permalinks save; or gated SQL delete; restart also flushes (entrypoint) | `/wp-admin` permalinks save; or gated SQL delete | `wp rewrite flush --hard` |
+
+When the user just says "clear all caches" with no specific symptom: run the transient cleanup (dry-run first), route them to their page-cache plugin's purge button if one is active, and suggest a platform restart only if code recently changed. That combination is the honest maximum reachable over today's channels.
