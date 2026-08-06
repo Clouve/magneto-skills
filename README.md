@@ -40,7 +40,7 @@ For Gemini CLI, OpenAI Codex CLI, or other clients, use the [Magneto Agent](#mag
 | `mern` | DevOps | 0.2.0 | Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. |
 | `moodle` | DevOps | 0.1.1 | Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
 | `odoo` | DevOps | 0.1.0 | Safely operate an Odoo 19.0 ERP install — module installs/upgrades, filestore-aware backups/restores, prod→staging neutralization, database-manager hardening, diagnosing module failures. |
-| `wordpress` | DevOps | 0.1.0 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
+| `wordpress` | DevOps | 0.1.1 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
 
 ## On-disk layout
 
