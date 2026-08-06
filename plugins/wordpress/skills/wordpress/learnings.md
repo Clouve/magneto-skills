@@ -8,9 +8,9 @@ Each entry: dated (ISO-8601), terse, leads with the fact. If an entry grows past
 
 ---
 
-## 2026-08-05 — Channel reality at authoring time: no shell into WordPress siblings
+## 2026-08-05 — Channel reality: the Clouve-packaged shape now SHIPS clouve-ops sshd
 
-Neither the Clouve-packaged WordPress image nor vanilla `wordpress:<ver>-apache` ships sshd or the `clouve-ops` operator account (unlike the moodle/gibbon images). At authoring time the only live channels from the Magneto Agent container are TCP `mysql` to the DB sibling and HTTP `curl` to the WordPress sibling — everything filesystem-side (wp-config edits, plugin file surgery, `.maintenance` removal, wp-cli) is documented as conditional on a shell existing. Playbooks probe first ([reference/shell-access.md](reference/shell-access.md)) and each step is labeled with its channel. If the magneto WordPress images later add `clouve-ops` sshd, the probes light up and no skill change is needed — but re-verify the wp-cli invocation user (image runs as root; `--allow-root` leaves root-owned files outside `wp-content/uploads`).
+Supersedes the earlier no-shell entry from the same date. As of the magneto `develop` wordpress agent-enablement change (2026-08-05, the change that added `x-clouve-agent` to `apps/wordpress`), BOTH packaged sibling images (`wordpress`, `wordpress-mariadb`) ship openssh-server + the `clouve-ops` account with passwordless sudo, moodle-pattern; sshd starts only when `CLOUVE_OPS_PASSWORD` is set, i.e. on agent-enabled deployments — agent-off deployments of the same images run shell-less by design. On that shape the [reference/shell-access.md](reference/shell-access.md) probe is EXPECTED GREEN and wp-cli lights up. Verified live on a Kubernetes deployment 2026-08-05: SSH probe GREEN to both siblings, `sudo -u www-data wp --path=/var/www/html core version` → 6.9 over SSH (prefer that invocation over `--allow-root`; chown after if root was unavoidable), and `scripts/verify-health.sh` GREEN end-to-end. The packaged DB image is now pinned `mariadb:12.3` (12.3.2 at pin time) — Shape A's "engine floats per pull" caveat no longer applies. Vanilla developer-submitted composes (Shape B) remain shell-less — probe-first still applies everywhere.
 
 ---
 
