@@ -20,7 +20,7 @@ Append an entry when you discover any of the following:
 - Anything tied to a `/_clv/` path — that namespace is the Clouve platform's, not Gibbon's.
 - Anything that belongs in a global Claude Code skill (e.g., "how to use grep", "how memory works") — not Gibbon-specific.
 - Per-session ephemera — what you tried and rolled back, the contents of one bug report, the user's preferred name for their database. That belongs in conversation context or the memory system, not here.
-- Secrets. Ever. (Including the literal value of `${CLOUVE_OPS_PASSWORD}`, the tenant's `ANTHROPIC_API_KEY`, or any DB password.)
+- Secrets. Ever. (Including the literal value of `${CLOUVE_OPS_PASSWORD}`, the AI Assistant's access key (`MAGNETO_AGENT_LLM_KEY`), or any DB password.)
 
 ## Entry format
 

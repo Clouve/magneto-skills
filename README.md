@@ -1,19 +1,16 @@
 # magneto-skills
 
-Clouve's AI client skills — Anthropic-style `SKILL.md` bundles packaged as a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) and designed to be consumed by **Claude Code**, **Gemini CLI**, **OpenAI Codex CLI**, or any other AI client that can read a `SKILL.md` tree.
+Clouve's AI Assistant skills: Anthropic-style `SKILL.md` bundles packaged as a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). Clouve's AI Assistant runs Claude Code inside the [Magneto Agent](https://github.com/Clouve/magneto-agent) container and loads these skills from here. Any other tool that reads a `SKILL.md` tree can use them too.
 
-Each skill is its own plugin under `plugins/<plugin-name>/`. The marketplace format is the Claude Code spec, but the underlying skill payload (`SKILL.md` + `playbooks/` + `reference/` + `scripts/`) is client-agnostic — only the loading mechanism differs per client.
+Each skill is its own plugin under `plugins/<plugin-name>/`. The skill payload (`SKILL.md` + `playbooks/` + `reference/` + `scripts/`) is plain Markdown and shell, so only the loading mechanism depends on the consumer.
 
-## Supported clients
+## How the skills load
 
-| Client | How it loads these skills |
+| Consumer | How it loads these skills |
 | --- | --- |
 | **Claude Code** | Native plugin marketplace (`/plugin marketplace add` + `/plugin install`). Skills auto-load from `~/.claude/skills/<skill-name>/`. |
-| **Gemini CLI** | No built-in skills convention yet — skill content is surfaced to the agent via a `## Skill: <plugin>` section appended to the merged `~/.gemini/GEMINI.md` context file. |
-| **OpenAI Codex CLI** | Same as Gemini — skill content reaches the agent through a `## Skill: <plugin>` section appended to `~/.codex/AGENTS.md`. |
-| **Other** | Anything that can read a `SKILL.md` tree at a known path can consume these directly — clone the repo (or a single plugin's directory) and point the client at `plugins/<plugin-name>/skills/<plugin-name>/`. |
-
-The two production consumers today are Claude Code's native plugin marketplace and Clouve's [Magneto Agent](https://github.com/Clouve/magneto-agent) runtime container (which orchestrates loading for all three CLIs above — see [Magneto Agent](#magneto-agent) below).
+| **Magneto Agent** | Clouve's AI Assistant container. At start it clones the marketplaces named in `MAGNETO_AGENT_SKILLS`, stages each selected plugin under `/clouve/skills/<plugin>/`, runs the plugin's optional `install.sh`, and links its skills into `~/.claude/skills/`. See [Magneto Agent](#magneto-agent) below. |
+| **Other** | Anything that can read a `SKILL.md` tree at a known path can consume these directly: clone the repo (or a single plugin's directory) and point the tool at `plugins/<plugin-name>/skills/<plugin-name>/`. |
 
 ## Install via Claude Code
 
@@ -29,18 +26,16 @@ For example, to install the Gibbon skill:
 /plugin install gibbon@clouve
 ```
 
-For Gemini CLI, OpenAI Codex CLI, or other clients, use the [Magneto Agent](#magneto-agent) runtime path below — that loader handles staging the skill payload and synthesizing the per-client context file.
-
 ## Plugins
 
 | Plugin | Category | Version | Description |
 | --- | --- | --- | --- |
-| `ai-studio` | DevOps | 0.2.0 | Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — install software, write code, run supervised services, debug, and verify. |
-| `gibbon` | DevOps | 0.1.0 | Safely operate a Gibbon (gibbonedu) school-management install — upgrades, module installs, backups/restores, year rollover, hardening, diagnosing 500s. |
+| `ai-studio` | DevOps | 0.2.1 | Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — install software, write code, run supervised services, debug, and verify. |
+| `gibbon` | DevOps | 0.1.1 | Safely operate a Gibbon (gibbonedu) school-management install — upgrades, module installs, backups/restores, year rollover, hardening, diagnosing 500s. |
 | `mern` | DevOps | 0.2.0 | Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. |
-| `moodle` | DevOps | 0.1.1 | Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
-| `odoo` | DevOps | 0.1.0 | Safely operate an Odoo 19.0 ERP install — module installs/upgrades, filestore-aware backups/restores, prod→staging neutralization, database-manager hardening, diagnosing module failures. |
-| `wordpress` | DevOps | 0.1.1 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
+| `moodle` | DevOps | 0.1.2 | Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
+| `odoo` | DevOps | 0.1.1 | Safely operate an Odoo 19.0 ERP install — module installs/upgrades, filestore-aware backups/restores, prod→staging neutralization, database-manager hardening, diagnosing module failures. |
+| `wordpress` | DevOps | 0.1.2 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
 
 ## On-disk layout
 
@@ -75,7 +70,7 @@ Each plugin currently ships a single skill at `plugins/<name>/skills/<name>/`. M
 
 ## Magneto Agent
 
-Clouve's [Magneto Agent](https://github.com/Clouve/magneto-agent) container is the runtime that consumes these skills for all three supported AI clients (Claude Code, Gemini CLI, OpenAI Codex CLI) — a single marketplace, three loading paths, picked at session start by the user. Magneto Agent's marketplace loader treats this repo as one Claude Code plugin marketplace among possibly many — set on the `MAGNETO_AGENT_SKILLS` env var as a comma-separated list of marketplace repository URLs, each optionally narrowed with `?plugins=<n1>,<n2>` and pinned with `#<branch>`:
+Clouve's [Magneto Agent](https://github.com/Clouve/magneto-agent) container is the AI Assistant runtime. It runs Claude Code and loads these skills at container start. Its marketplace loader treats this repo as one Claude Code plugin marketplace among possibly many, set on the `MAGNETO_AGENT_SKILLS` env var as a comma-separated list of marketplace repository URLs, each optionally narrowed with `?plugins=<n1>,<n2>` and pinned with `#<branch>`:
 
 ```yaml
 # All plugins from this marketplace, default branch

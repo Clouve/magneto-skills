@@ -2,7 +2,7 @@
 name: odoo
 description: 'Safely operate an Odoo 19.0 ERP install — install/upgrade modules, filestore-aware backups and restores, prod→staging neutralization, database-manager hardening, and diagnosing module/upgrade failures — without corrupting accounting or framework data. Use when the user is running the Clouve Odoo app, mentions "Odoo", `odoo-bin`, `odoo.conf`, the master password, `account.move`, `ir_model_data`, `ir.config_parameter`, the filestore, or `/web/database/manager`. Do not use for generic Python/PostgreSQL/Linux questions that are not tied to an Odoo instance.'
 type: devops
-version: 0.1.0
+version: 0.1.1
 authoredAgainst: odoo 19.0
 ---
 
@@ -48,7 +48,7 @@ Use this skill when the user is working with the Clouve Odoo app, when they ment
 
 9. **Vet third-party addons before install.** Addons installed into `/mnt/extra-addons` (which is already on `addons_path`) run arbitrary Python with full DB access and filestore write. Read `__manifest__.py` and the top-level Python before installing. → [reference/module-lifecycle.md](reference/module-lifecycle.md).
 
-10. **Tenant owns the `ANTHROPIC_API_KEY` (`~/.claude_api_key`).** Never print it, copy it to another path, or send it anywhere.
+10. **Never expose the AI Assistant's access key** (`MAGNETO_AGENT_LLM_KEY`; `ANTHROPIC_AUTH_TOKEN` in your session). Clouve manages and rotates it, one key per deployment. Never print it, copy it to another path, or send it anywhere.
 
 ## Environment you are running in
 

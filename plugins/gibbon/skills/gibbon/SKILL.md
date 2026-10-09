@@ -2,7 +2,7 @@
 name: gibbon
 description: Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, hardening, and diagnosing 500s. Use when the user is running this app, mentions "Gibbon", or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.
 type: devops
-version: 0.1.0
+version: 0.1.1
 authoredAgainst: gibbon v30.0.01
 ---
 
@@ -31,7 +31,7 @@ Use this skill when the user is working with the Clouve Gibbon app, when they me
 6. **Check `/version.php` before upgrading.** Gibbon versions itself by the `$version` string in `/var/www/html/version.php`. The running DB version is in the `gibbonSetting` table (scope='System', name='version'). If those disagree, an upgrade is already in progress or failed — see [playbooks/upgrade-gibbon.md](playbooks/upgrade-gibbon.md) before doing anything else.
 7. **Never install a module from an untrusted source.** Third-party modules run arbitrary PHP inside the Gibbon container with DB access. Before installing one that did not come from `github.com/GibbonEdu`, read its `manifest.php` and skim its top-level files. See [playbooks/install-module.md](playbooks/install-module.md).
 8. **Academic year is sacred.** The `gibbonSchoolYear` table drives enrolment, attendance, markbook, and finance scoping. Rollover (promoting students to next year) is a documented workflow inside Gibbon's own UI — do NOT simulate it with SQL. See [reference/academic-year-rollover.md](reference/academic-year-rollover.md) and [playbooks/year-end-rollover.md](playbooks/year-end-rollover.md).
-9. **Tenant owns the Anthropic API key.** It lives at `$HOME/.claude_api_key`. Never print it, never copy it to another path, never send it anywhere.
+9. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 10. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
 
 ## Environment you are running in

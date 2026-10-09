@@ -69,7 +69,7 @@ commands over SSH as when you're running locally. Specifically:
 - **Edit `config.php` over SSH only after a diff + ack**; otherwise
   prefer the env-driven sync path that runs at container restart.
 - **Never echo, copy, or transmit `${CLOUVE_OPS_PASSWORD}`** — same
-  rule as for `~/.claude_api_key`. Use `sshpass -e` (which reads it
+  rule as for the AI Assistant's access key. Use `sshpass -e` (which reads it
   from the env via `SSHPASS`) rather than passing the value on a
   command line where it would land in shell history or `ps`.
 - **Always `sudo` explicitly** for privileged commands rather than
