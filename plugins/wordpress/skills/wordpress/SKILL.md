@@ -2,7 +2,7 @@
 name: wordpress
 description: Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions "WordPress", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.
 type: devops
-version: 0.1.1
+version: 0.1.2
 authoredAgainst: wordpress v6.9.0
 ---
 
@@ -34,7 +34,7 @@ Use this skill when the user is working with a WordPress deployment on Clouve, w
 9. **Plugins and themes are arbitrary PHP** with full database access and filesystem write. Never install from an untrusted source; install via `/wp-admin` or wp-cli, never by SQL. Vet first per [playbooks/install-plugin.md](playbooks/install-plugin.md).
 10. **Never change the table prefix on a live install.** The Clouve-packaged entrypoint detects "already installed" by probing the hardcoded `wp_options` table — a different `WORDPRESS_TABLE_PREFIX` makes every boot think the site is fresh and run a second install into the same database.
 11. **Capacity is platform-managed and paid.** Never patch container CPU/memory or volume sizes, even when a resource ceiling is the diagnosis — surface the finding and route the user to their Clouve plan instead.
-12. **Tenant owns the Anthropic API key.** It lives at `$HOME/.claude_api_key`. Never print it, never copy it to another path, never send it anywhere.
+12. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 13. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
 
 ## Environment you are running in

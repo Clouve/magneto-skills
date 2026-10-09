@@ -4,7 +4,7 @@ Three distinct things that can be "rotated" here, with very different procedures
 
 1. **Gibbon admin user password** — the `GIBBON_PASSWORD` the tenant uses to log into Gibbon's UI as the first admin.
 2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`.
-3. **The tenant's Anthropic API key** — stored on disk at `$HOME/.claude_api_key` in the Magneto Agent container.
+3. **The AI Assistant's access key**: Clouve manages it, one key per deployment. You don't rotate it from here (see section 3).
 
 Pick the right one before doing anything.
 
@@ -60,30 +60,23 @@ The image auto-syncs `config.php` from env vars on every restart. Use that.
 - Do NOT hand-edit `config.php` to change the password — the next container restart will sync env → file and overwrite your change, or worse, the sed will fail mid-rewrite and leave `config.php` broken.
 - Do NOT put a password with `'` in it into `DB_PASSWORD`. Gibbon's `config.php` uses single-quoted PHP strings and the image's sed doesn't escape `'`.
 
-## 3. Rotate the tenant's Anthropic API key
+## 3. The AI Assistant's access key
 
-This is between the tenant and Anthropic — Clouve never stores, proxies, or sees the key.
+Clouve manages this key. The platform issues one per deployment, caps it at the deployment's monthly AI usage allowance plus any usage the tenant bought this month, and blocks or deletes it when the AI Assistant is switched off or the deployment is paused or removed. Neither you nor the tenant rotates it from inside the container.
 
-The key lives in three possible places, resolution order per [Magneto Agent's `.bash_profile`](https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/.bash_profile):
+Where it is in the Magneto Agent container:
 
-1. `$ANTHROPIC_API_KEY` env var injected at pod launch (from Clouve's `userConfigurable` secret).
-2. `$HOME/.claude_api_key` file — persisted across restarts on the `magneto-agent-home` volume.
-3. In-terminal prompt at first session.
-
-Plus:
-4. Magneto Agent's web Preferences Panel.
+1. The container environment, as `MAGNETO_AGENT_LLM_KEY` (set from a Kubernetes Secret the platform manages).
+2. Your session, as `ANTHROPIC_AUTH_TOKEN`.
+3. `/etc/profile.d/clouve-env.sh`, which login shells source.
 
 ### Procedure
 
-Tenant path (don't do this for them):
-1. Generate a new key at `console.anthropic.com/settings/keys`.
-2. Either: overwrite `$HOME/.claude_api_key` with the new key, OR use Magneto Agent's Preferences Panel to update it.
-3. Open a fresh terminal → Claude Code picks up the new key.
-4. Revoke the old key at `console.anthropic.com/settings/keys`.
+If the tenant thinks the key has leaked, send them to Clouve support. Clouve replaces the key, and the usage already counted this month carries over to the new one. Nothing changes in Gibbon.
 
 ### Do NOT
 
 - Print the key to chat, even redacted.
-- Copy the key to anywhere outside `$HOME/.claude_api_key`.
-- Send the key over any network endpoint other than `api.anthropic.com`.
-- Assume the env var and the file agree. If they disagree, the env var wins on first boot, but once `.claude_api_key` exists it takes precedence for the terminal client per `.bash_profile`'s resolution order.
+- Copy it to a file, a command line, or another container.
+- Send it to any endpoint other than the model gateway in `ANTHROPIC_BASE_URL`.
+- Edit the environment or `/etc/profile.d/clouve-env.sh` to swap in a different key.

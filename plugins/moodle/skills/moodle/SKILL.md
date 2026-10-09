@@ -2,7 +2,7 @@
 name: moodle
 description: Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
-version: 0.1.1
+version: 0.1.2
 authoredAgainst: moodle v5.2.0
 ---
 
@@ -32,7 +32,7 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 7. **Check `version.php` before upgrading.** Moodle versions itself by `$version` in [public/version.php](https://github.com/moodle/moodle/blob/v5.2.0/public/version.php). The running DB version is `value` in `mdl_config WHERE name='version'`. If those disagree an upgrade is in flight or has failed — go to [playbooks/upgrade-moodle.md](playbooks/upgrade-moodle.md) before doing anything else.
 8. **Never install a plugin from an untrusted source.** Plugins run arbitrary PHP inside the Moodle container with full DB access and `moodledata/` write. Read the plugin's `version.php`, `db/install.xml`, `db/install.php`, `db/upgrade.php`, and `lib.php` before installing. See [playbooks/install-plugin.md](playbooks/install-plugin.md).
 9. **Caches are global and stale-by-default after schema or `config.php` changes.** After ANY upgrade, plugin install/uninstall, or `config.php` edit, run [scripts/purge-caches.sh](scripts/purge-caches.sh) — otherwise users see stale strings, broken navigation, or silently-disabled features.
-10. **Tenant owns the Anthropic API key.** It lives at `$HOME/.claude_api_key`. Never print it, never copy it to another path, never send it anywhere.
+10. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 11. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
 
 ## Environment you are running in

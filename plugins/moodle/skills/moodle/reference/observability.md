@@ -137,4 +137,4 @@ If you can't fix something from inside the Magneto Agent container, the user fil
 - Include the last 50 rows of `mdl_logstore_standard_log` filtered to the affected user, if applicable.
 - Include the last 100 lines of the PHP error log.
 
-Don't paste secrets — DB passwords, API keys, the Anthropic key, user emails. Sanitize.
+Don't paste secrets — DB passwords, API keys, the AI Assistant's access key, user emails. Sanitize.
