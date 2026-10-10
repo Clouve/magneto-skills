@@ -27,6 +27,8 @@
 
 set -u
 
+. "$(dirname "${BASH_SOURCE[0]}")/lib/mysql-tls.sh"
+
 : "${GIBBON_DB_HOST:?GIBBON_DB_HOST not set — app env not injected correctly}"
 : "${GIBBON_DB_USER:=gibbon}"
 : "${GIBBON_DB_PASSWORD:?GIBBON_DB_PASSWORD not set}"
@@ -40,6 +42,9 @@ mkdir -p "${out_dir}"
 
 echo "Backing up ${GIBBON_DB_NAME}@${GIBBON_DB_HOST} to ${out_file} ..."
 
+# TLS off, in whichever dialect the installed client speaks (lib/mysql-tls.sh).
+read -r -a no_tls <<< "$(mysql_no_tls_args mysqldump)"
+
 MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysqldump \
   -h "${GIBBON_DB_HOST}" \
   -u "${GIBBON_DB_USER}" \
@@ -47,7 +52,7 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysqldump \
   --quick \
   --lock-tables=false \
   --default-character-set=utf8mb3 \
-  --skip-ssl \
+  "${no_tls[@]}" \
   "${GIBBON_DB_NAME}" \
   > "${out_file}"
 

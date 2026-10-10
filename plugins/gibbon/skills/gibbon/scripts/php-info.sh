@@ -18,6 +18,8 @@
 
 set -u
 
+. "$(dirname "${BASH_SOURCE[0]}")/lib/mysql-tls.sh"
+
 : "${GIBBON_HOST:=gibbon}"
 
 echo "Gibbon container PHP probe via http://${GIBBON_HOST}"
@@ -26,9 +28,11 @@ echo
 # 1. Version
 echo "--- Gibbon version (from DB; no CLI access) ---"
 if [ -n "${GIBBON_DB_HOST:-}" ] && [ -n "${GIBBON_DB_PASSWORD:-}" ]; then
+  # TLS off, in whichever dialect the installed client speaks (lib/mysql-tls.sh).
+  read -r -a no_tls <<< "$(mysql_no_tls_args mysql)"
   MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysql \
     -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER:-gibbon}" "${GIBBON_DB_NAME:-gibbon}" \
-    --skip-ssl -sN -e \
+    "${no_tls[@]}" -sN -e \
     "SELECT value FROM gibbonSetting WHERE scope='System' AND name='version';" 2>/dev/null
   unset MYSQL_PWD
 else
