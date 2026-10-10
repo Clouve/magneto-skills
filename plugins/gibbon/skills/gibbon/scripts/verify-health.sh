@@ -16,11 +16,17 @@
 
 set -u
 
+. "$(dirname "${BASH_SOURCE[0]}")/lib/mysql-tls.sh"
+
 : "${GIBBON_HOST:=gibbon}"
 : "${GIBBON_DB_HOST:?GIBBON_DB_HOST not set}"
 : "${GIBBON_DB_USER:=gibbon}"
 : "${GIBBON_DB_PASSWORD:?GIBBON_DB_PASSWORD not set}"
 : "${GIBBON_DB_NAME:=gibbon}"
+
+# TLS off, in whichever dialect the installed client speaks (lib/mysql-tls.sh).
+read -r -a no_tls <<< "$(mysql_no_tls_args mysql)"
+read -r -a admin_no_tls <<< "$(mysql_no_tls_args mysqladmin)"
 
 pass=0
 fail=0
@@ -50,7 +56,7 @@ fi
 
 # 2. DB reachable
 if MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysqladmin \
-     -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" --skip-ssl ping >/dev/null 2>&1; then
+     -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${admin_no_tls[@]}" ping >/dev/null 2>&1; then
   check "MySQL ping responds on ${GIBBON_DB_HOST}" pass
 else
   check "MySQL ping responds on ${GIBBON_DB_HOST}" fail
@@ -58,7 +64,7 @@ fi
 
 # 3. gibbonSetting(version) retrievable, and record it
 db_version=$(MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysql \
-  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" --skip-ssl -sN -e \
+  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" "${no_tls[@]}" -sN -e \
   "SELECT value FROM gibbonSetting WHERE scope='System' AND name='version';" 2>/dev/null)
 if [ -n "$db_version" ]; then
   check "gibbonSetting(version) = ${db_version}" pass
@@ -68,7 +74,7 @@ fi
 
 # 4. absoluteURL setting retrievable
 abs_url=$(MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysql \
-  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" --skip-ssl -sN -e \
+  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" "${no_tls[@]}" -sN -e \
   "SELECT value FROM gibbonSetting WHERE scope='System' AND name='absoluteURL';" 2>/dev/null)
 if [ -n "$abs_url" ]; then
   check "absoluteURL = ${abs_url}" pass
@@ -78,7 +84,7 @@ fi
 
 # 5. Exactly one current school year
 current_year_count=$(MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysql \
-  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" --skip-ssl -sN -e \
+  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" "${no_tls[@]}" -sN -e \
   "SELECT COUNT(*) FROM gibbonSchoolYear WHERE status='Current';" 2>/dev/null)
 if [ "$current_year_count" = "1" ]; then
   check "exactly one gibbonSchoolYear is Current" pass
@@ -88,7 +94,7 @@ fi
 
 # 6. gibbonLog activity — if the last log entry is >24h old, something's wrong
 last_log_age=$(MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysql \
-  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" --skip-ssl -sN -e \
+  -h "${GIBBON_DB_HOST}" -u "${GIBBON_DB_USER}" "${GIBBON_DB_NAME}" "${no_tls[@]}" -sN -e \
   "SELECT TIMESTAMPDIFF(HOUR, MAX(timestamp), NOW()) FROM gibbonLog;" 2>/dev/null)
 if [ -n "$last_log_age" ] && [ "$last_log_age" -lt 24 ] 2>/dev/null; then
   check "gibbonLog has activity within last 24h (last: ${last_log_age}h ago)" pass
