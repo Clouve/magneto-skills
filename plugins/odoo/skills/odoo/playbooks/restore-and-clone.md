@@ -15,11 +15,11 @@ Use when restoring a backup to recover from data loss, or when cloning a product
 `odoo db load` refuses to overwrite an existing database by default. Check first:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST} \
-  "sudo -u postgres psql -lqt | cut -d\| -f1 | grep -w '<target-db>'"
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_DB_HOST} \
+  "sudo -u postgres psql -U ${ODOO_DB_USER} -lqt | cut -d\| -f1 | grep -w '<target-db>'"
 ```
 
-If the database exists and you want to replace it, see the force-overwrite step below.
+No output (exit 1) means it doesn't exist. The superuser role is `${ODOO_DB_USER}`; there is no `postgres` role. If the database exists and you want to replace it, see the force-overwrite step below.
 
 ### 2. Copy the backup artifact into the Odoo container
 
@@ -36,36 +36,30 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "ls -lh /tmp/<backup>.zip"
 ```
 
-### 3. Preferred — `scripts/restore.sh`
+### 3. Preferred: the skill's `scripts/restore.sh`
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo -E bash /var/lib/odoo/scripts/restore.sh <target-db> /tmp/<backup>.zip"
+bash /clouve/skills/odoo/plugin/skills/odoo/scripts/restore.sh <target-db> /tmp/<backup>.zip
 ```
 
-For a prod→staging clone, pass `-n` to neutralize immediately (see step 5):
-
-```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo -E bash /var/lib/odoo/scripts/restore.sh -n <target-db> /tmp/<backup>.zip"
-```
+Run it here, in this container: it SSHes to the Odoo container itself (unlike `scripts/backup.sh`, which you pipe in). It loads the ZIP into `<target-db>` neutralized, the safe default for a prod→staging clone (see step 5), then prints `database.is_neutralized`. It refuses to load into the live database name (`${ODOO_DB_NAME}`) unless you add `--prod`, which also skips neutralization, for a real disaster-recovery restore.
 
 ### 4. Manual fallback — `odoo db load`
 
-**Note: `-c` goes AFTER `db`, not before it** (see [reference/backup-restore.md](../reference/backup-restore.md#cli-vs-http--prefer-the-cli)).
+Pass the config as `ODOO_RC`, not `-c` (see [reference/backup-restore.md](../reference/backup-restore.md#cli-vs-http--prefer-the-cli)).
 
 ```bash
 # Restore to a new database (new dbuuid generated — the "copy" path):
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf load <target-db> /tmp/<backup>.zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load <target-db> /tmp/<backup>.zip"
 
 # Restore and neutralize immediately (MANDATORY for prod→staging):
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf load -n <target-db> /tmp/<backup>.zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load -n <target-db> /tmp/<backup>.zip"
 
 # Restore as a "move" — keep the original dbuuid (use for DR recovery, not cloning):
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf load --move <target-db> /tmp/<backup>.zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load --move <target-db> /tmp/<backup>.zip"
 ```
 
 **Flag semantics:**
@@ -84,7 +78,7 @@ to destroy the existing <target-db> before proceeding.
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf load -f <target-db> /tmp/<backup>.zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load -f <target-db> /tmp/<backup>.zip"
 ```
 
 ### 5. Clone: prod → staging
@@ -94,18 +88,18 @@ The recommended pattern is dump then load with `-n`:
 ```bash
 # Step 1: dump prod (on the Odoo container):
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf dump prod-db /tmp/prod-db-$(date +%Y%m%d).zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump prod-db /tmp/prod-db-$(date +%Y%m%d).zip"
 
 # Step 2: restore to staging with immediate neutralization:
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf load -n staging-db /tmp/prod-db-$(date +%Y%m%d).zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load -n staging-db /tmp/prod-db-$(date +%Y%m%d).zip"
 ```
 
 Alternatively, use `db duplicate -n` for a server-side copy when both databases will be on the same Odoo instance (faster — no dump/load round-trip):
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf duplicate -n prod-db staging-db"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db duplicate -n prod-db staging-db"
 ```
 
 ### 6. Verify neutralization on a staging clone
@@ -114,9 +108,9 @@ After any prod→staging restore, confirm neutralization applied:
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <target-db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <target-db> --no-http <<'EOF'
 print(env['ir.config_parameter'].sudo().get_param('database.is_neutralized'))
-print(env['ir.mail.server'].search([('active', '=', True)]).mapped('name'))
+print(env['ir.mail_server'].search([('active', '=', True)]).mapped('name'))
 EOF"
 ```
 
@@ -130,7 +124,7 @@ Spot-check that attachments are intact (a quick test that the filestore came thr
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <target-db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <target-db> --no-http <<'EOF'
 count = env['ir.attachment'].search_count([('type', '=', 'binary'), ('store_fname', '!=', False)])
 print(f'Filestore attachments: {count}')
 EOF"

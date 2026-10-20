@@ -14,30 +14,30 @@ A `pg_dump` alone is NOT a complete backup. Missing filestore = silently lost at
 
 ## Steps
 
-### 1. Preferred — `scripts/backup.sh`
+You run these commands in this container (the Magneto Agent) and reach Odoo over the clouve-ops SSH channel. Step 1 carries `-o StrictHostKeyChecking=accept-new` because it is often the first connection: while the host key is unknown, `sshpass` exits 6 without printing anything.
+
+### 1. Preferred: pipe the skill's `scripts/backup.sh` into the Odoo container
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo -E bash /var/lib/odoo/scripts/backup.sh <db>"
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+  "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
-This script wraps `odoo db -c /etc/odoo/odoo.conf dump <db> <out.zip>`, handles error checking, and writes the artifact to a predictable path (typically `/var/lib/odoo/backups/<db>-<timestamp>.zip`). It is the preferred path because it is audited and filestore-aware.
+The script is in this skill's own folder, here in the agent container. The Odoo container has no copy of it, and nothing needs installing there: `bash -s` reads the script from the pipe and runs it inside the Odoo container as root. It runs `odoo db dump`, writes `/var/lib/odoo/backups/<db>-<UTC timestamp>.zip` on Odoo's data volume, and checks that the ZIP holds `dump.sql`, `manifest.json` and the filestore. If the dump or the check fails, it exits non-zero and deletes the file.
 
-Check the output for the artifact path, then note it for the copy step below.
+Its last line is the backup's path, for example `[odoo/backup] done: /var/lib/odoo/backups/odoo-20261020-071500.zip (516K); copy it off the container to keep it`. Note the path for step 5. To pick the path yourself, add it after the database name: `"sudo bash -s -- <db> /tmp/<db>.zip"`.
 
-### 2. Manual fallback — `odoo db dump` directly
+### 2. Manual fallback: `odoo db dump` directly
 
-If `scripts/backup.sh` is not present, run the dump command directly.
-
-**Note: `-c` goes AFTER `db`, not before it. This is a subcommand flag, not a server flag.**
+If you can't use the script, run the dump yourself. Pass the config as `ODOO_RC`, never as `-c`. Where `odoo` accepts `-c` differs from one subcommand to the next (after `dump`, `-c` fails with "unrecognized arguments"), and `sudo` over SSH drops the `ODOO_RC` that the image sets, so without it Odoo can't find its database.
 
 ```bash
 # ZIP format (default) — includes dump.sql + filestore/ + manifest.json:
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo db -c /etc/odoo/odoo.conf dump <db> /tmp/<db>-$(date +%Y%m%d-%H%M%S).zip"
+  "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump <db> /tmp/<db>-$(date +%Y%m%d-%H%M%S).zip"
 ```
 
-Verify the artifact was created and is non-zero:
+A failed dump still leaves an empty file at that path. Check that the artifact is there and not zero bytes:
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
@@ -54,10 +54,10 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
 
 ```bash
 # Dump-only (no filestore — incomplete Odoo backup):
-sudo odoo db -c /etc/odoo/odoo.conf dump --no-filestore <db> /tmp/<db>-dbonly.zip
+sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump --no-filestore <db> /tmp/<db>-dbonly.zip
 
 # PG custom format (no filestore, no manifest — DB-admin use only):
-sudo odoo db -c /etc/odoo/odoo.conf dump --format dump <db> /tmp/<db>.dump
+sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump --format dump <db> /tmp/<db>.dump
 ```
 
 ### 4. Manual fallback — `pg_dump` + filestore tar
@@ -66,42 +66,43 @@ Use only if `odoo db dump` is not available (e.g., the Odoo process cannot start
 
 **This produces an incomplete Odoo backup** — no `manifest.json`, but the filestore is included if you tar it separately. The restore path requires manual `psql` + filestore extraction (not `odoo db load`).
 
+The database's superuser role is `${ODOO_DB_USER}` (`odoo`). There is no `postgres` role, so `pg_dump` needs `-U`. This may be your first connection to the Postgres container, hence `accept-new` on that command too.
+
 ```bash
 # Step 1: dump the database (via SSH to the Postgres container):
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST} \
-  "sudo -u postgres pg_dump --no-owner -Fc <db> > /tmp/<db>-$(date +%Y%m%d).dump"
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_DB_HOST} \
+  "sudo -u postgres pg_dump -U ${ODOO_DB_USER} --no-owner -Fc <db> > /tmp/<db>-$(date +%Y%m%d).dump"
 
 # Step 2: tar the filestore (via SSH to the Odoo container):
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo tar -C /var/lib/odoo/filestore -czf /tmp/filestore-<db>-$(date +%Y%m%d).tar.gz <db>"
 ```
 
-**Important:** `pg_dump` alone silently loses all attachments stored in the filestore. Always tar the filestore directory in the same step.
+**Important:** `pg_dump` alone silently loses all attachments stored in the filestore. Always tar the filestore directory in the same step. A failed `pg_dump` still leaves an empty `.dump` file, so check its size with `ls -lh` before you rely on it.
 
-### 5. Copy the artifact off the pod
+### 5. Copy the artifact off the Odoo container
 
-The backup artifact lives inside the container. Copy it to the Magneto Agent's persistent home directory for safekeeping:
-
-```bash
-# Via kubectl cp (if running in Kubernetes):
-kubectl cp <odoo-pod>:/tmp/<db>-<timestamp>.zip $HOME/backups/<db>-<timestamp>.zip
-
-# Or via scp through the clouve-ops SSH channel:
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e scp \
-  clouve-ops@${ODOO_HOST}:/tmp/<db>-<timestamp>.zip \
-  $HOME/backups/<db>-<timestamp>.zip
-```
-
-Verify the copy arrived:
+There is no `kubectl` in this container, and `scp` can't read `/var/lib/odoo`: that folder belongs to the `odoo` user, and `scp` runs as clouve-ops without sudo. Stream the file over the SSH channel with `sudo cat` into the Magneto Agent's persistent home directory:
 
 ```bash
-ls -lh $HOME/backups/<db>-<timestamp>.zip
+mkdir -p "$HOME/backups"
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+  "sudo cat /var/lib/odoo/backups/<db>-<timestamp>.zip" > "$HOME/backups/<db>-<timestamp>.zip"
 ```
 
-The `$HOME/backups/` directory survives pod restarts (it is on the persistent `magneto-agent-home` volume), but it is not an off-site backup. Advise the tenant to download the file periodically to an external location.
+For a step 2 backup, use its `/tmp/` path instead. For step 4, fetch the `.dump` from `${ODOO_DB_HOST}` and the filestore tar from `${ODOO_HOST}` the same way.
+
+Verify the copy arrived whole (`Done testing` means the ZIP is intact):
+
+```bash
+ls -lh "$HOME/backups/<db>-<timestamp>.zip"
+python3 -m zipfile -t "$HOME/backups/<db>-<timestamp>.zip" | tail -1
+```
+
+The `$HOME/backups/` directory survives pod restarts (it is on the persistent `magneto-agent-home` volume), but it is not an off-site backup. Advise the tenant to download the file periodically to an external location. Backups left in `/var/lib/odoo/backups/` take space on Odoo's data volume, the same volume as the filestore, so delete old ones there once they are copied.
 
 ## Do NOT
 
 - Take a `pg_dump`-only backup and call it complete — filestore attachments will be silently lost on restore.
 - Use `--format dump` as a routine Odoo backup — it produces a DBA-level DB-only dump, not a restorable Odoo backup.
-- Skip the copy step — backups inside the pod are lost if the pod is replaced.
+- Skip the copy step. A backup in the Odoo container's `/tmp` is gone when that container is replaced, and one on its data volume goes wherever that volume goes.

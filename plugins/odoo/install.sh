@@ -6,13 +6,14 @@
 # https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/marketplace/plugin-stager.sh
 #
 # What this installs and why:
-#   postgresql-client (psql, pg_dump, pg_restore) — scripts/backup.sh and the
-#       diagnose / restore playbooks shell out to these to talk to the
-#       odoo-postgres service over TCP.
+#   postgresql-client (psql, pg_dump, pg_restore) — the diagnose / restore
+#       playbooks shell out to these to talk to the odoo-postgres service over
+#       TCP.
 #   openssh-client + sshpass — the agent ssh's into the odoo and odoo-postgres
 #       containers as the clouve-ops operator account using `sshpass -e ssh …`
 #       with the per-pod password from CLOUVE_OPS_PASSWORD (the filestore-aware
-#       `odoo-bin db dump/load` and `odoo shell` run inside the odoo container).
+#       `odoo db dump/load` and `odoo shell` run inside the odoo container;
+#       scripts/backup.sh is piped in over this channel and runs there too).
 #
 # These do not belong in the upstream Magneto Agent image: no other consumer
 # needs them, and shipping sshpass by default expands the platform's attack

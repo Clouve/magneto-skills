@@ -11,12 +11,14 @@ against live external systems.
 
 ## How to neutralize
 
+Run it inside the Odoo container over the clouve-ops channel, with the config: `sudo` drops the image's `ODOO_RC`, and without it the command ends "THE DATABASE IS NOT NEUTRALIZED!" (checked on Odoo 19, 2026-10-20).
+
 ```bash
 # Neutralize in place (modifies the DB):
-odoo-bin neutralize -d <dbname>
+sudo odoo neutralize -c /etc/odoo/odoo.conf -d <dbname>
 
 # Preview the SQL without applying it (audit / dry-run):
-odoo-bin neutralize -d <dbname> --stdout
+sudo odoo neutralize -c /etc/odoo/odoo.conf -d <dbname> --stdout
 ```
 
 The `--stdout` flag prints the complete SQL wrapped in `BEGIN;` ... `COMMIT;`
@@ -104,8 +106,8 @@ restoring or duplicating, inside the same transaction. This is the recommended p
 for a prod→staging clone: restore + neutralize atomically.
 
 ```bash
-# Clone prod to staging and neutralize in one step:
-odoo-bin db -c /etc/odoo/odoo.conf load -n staging-db /tmp/prod-backup.zip
+# Clone prod to staging and neutralize in one step (config via ODOO_RC; `odoo db` takes no -c after the subcommand):
+sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load -n staging-db /tmp/prod-backup.zip
 ```
 
 ## Verify neutralization applied
@@ -116,7 +118,7 @@ env['ir.config_parameter'].sudo().get_param('database.is_neutralized')
 # Should return 'true'
 
 # Check that no mail servers are active (other than the dummy):
-env['ir.mail.server'].search([('active', '=', True)]).mapped('name')
+env['ir.mail_server'].search([('active', '=', True)]).mapped('name')
 # Should return ['neutralization - disable emails']
 
 # Check no crons are active except autovacuum:

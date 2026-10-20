@@ -16,43 +16,33 @@ See [reference/security.md](../reference/security.md) for the source-code basis 
 
 The `admin_passwd` (master password) is the only protection for all mutating database manager routes. The default is `'admin'` — and the first POST body that supplies any non-empty password **silently replaces it** with no confirmation step (the "auto-change footgun", see [reference/security.md](../reference/security.md#default-password-footgun)).
 
-Set a strong value before the instance is reachable:
+On Clouve, `admin_passwd` comes from `ODOO_MASTER_PASSWORD`, a random secret Clouve generates for each deployment. The entrypoint writes it into `odoo.conf` in plain text every time the container starts. Check that it is set and isn't the default, without printing it:
 
 ```bash
-# In the Clouve deployment, ODOO_MASTER_PASSWORD env var is templated into odoo.conf:
-# admin_passwd = <ODOO_MASTER_PASSWORD>
-# Set it to a random 32-char string — never leave it as 'admin'.
-
-# Verify the current value (shows the PBKDF2 hash, not plaintext — 'admin' has a known hash):
+# Prints two counts. "1" then "0": set, and not 'admin'. A second "1": still 'admin'.
+# A first "0": missing, so Odoo falls back to 'admin'.
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo grep admin_passwd /etc/odoo/odoo.conf"
+  "sudo grep -c '^admin_passwd' /etc/odoo/odoo.conf; sudo grep -cE '^admin_passwd *= *admin *$' /etc/odoo/odoo.conf || true"
 ```
 
-If the value is the default `'admin'` hash, change it immediately.
+Never `cat` or `grep` the `admin_passwd` line itself: on this image it holds the master password in plain text.
 
-**Preferred — set the env var and recycle the pod** (the entrypoint templates `ODOO_MASTER_PASSWORD` into `admin_passwd` in `odoo.conf`; no shell session required):
+If it is the default, change it immediately. The deployment's App Configuration is read-only once deployed, so neither you nor the tenant can change `ODOO_MASTER_PASSWORD` from the dashboard. Change it in the running instance:
 
-```bash
-# Update the ODOO_MASTER_PASSWORD secret/env var in your Clouve deployment config,
-# then recycle the pod:
-kubectl rollout restart deployment/<odoo-deployment>
-# The new admin_passwd takes effect as soon as the container starts.
-```
-
-**Programmatic alternative — via `odoo shell`** (verified against `odoo/service/db.py:408-411`):
+**Via `odoo shell`** (verified against `odoo/service/db.py:408-411`):
 
 The real function is `exp_change_admin_password(new_password)` — single argument, no old password:
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 import odoo.service.db as db_svc
 db_svc.exp_change_admin_password('NEW_STRONG_PASSWORD_HERE')
 # No env.cr.commit() needed — this writes odoo.conf directly via config.save(['admin_passwd'])
 EOF"
 ```
 
-Note: `exp_change_admin_password` takes ONE argument (the new password only). It calls `config.set_admin_password(new_password)` then `config.save(['admin_passwd'])`, writing the hashed value to `odoo.conf` directly — it does NOT touch the database. The pod-recycle method is preferred because it keeps the value in the env-var-driven config rather than baking it into a file.
+Note: `exp_change_admin_password` takes ONE argument (the new password only). It calls `config.set_admin_password(new_password)` then `config.save(['admin_passwd'])`, writing the hashed value to `odoo.conf` directly — it does NOT touch the database. The running server read `odoo.conf` when it started, so restart Odoo in its container afterwards (`SIGHUP`, see [reference/stack-and-runtime.md](../reference/stack-and-runtime.md#restarting-odoo)) to load the new value. The next time the container itself starts, the entrypoint writes `ODOO_MASTER_PASSWORD` back into `odoo.conf`, so tell the tenant the change lasts until then.
 
 ### 2. Set `list_db=False` and pin `db_name`
 

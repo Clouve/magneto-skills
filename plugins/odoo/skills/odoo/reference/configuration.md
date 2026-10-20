@@ -49,7 +49,7 @@
 | `data_dir` | `-D`/`--data-dir` | Platform-computed; on Linux: `/var/lib/Odoo` (product name). This image pins it to `/var/lib/odoo` via `ODOO_DATA_DIR` in `entrypoint.sh`. |
 | `addons_path` | `--addons-path` | `[]` (built from scan) |
 
-`addons_path` validation: invalid or non-addon directories are **silently dropped** (`_check_addons_path` only appends paths that pass `_is_addons_path()`). If a custom path disappears between restarts, Odoo will not error — the module simply vanishes from the addons list.
+`addons_path` validation (`_check_addons_path`, run every time Odoo reads the config): a plain path that is missing, or holds no module (no subfolder with `__init__.py` and `__manifest__.py`), is dropped with a WARNING ("no such directory" / "invalid addons directory ... skipped"). An entry with glob characters is expanded with `glob.glob()`, and matches that hold no module are dropped without a word. Either way Odoo starts: if a custom path disappears between restarts, the module simply vanishes from the addons list.
 
 ### Workers & limits
 
@@ -96,8 +96,10 @@ db_port = <DB_PORT>
 db_user = <ODOO_DB_USER>
 db_password = <ODOO_DB_PASSWORD>
 data_dir = /var/lib/odoo
-addons_path = /usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+addons_path = /usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons*
 admin_passwd = <ODOO_MASTER_PASSWORD or random>
 ```
+
+`/mnt/extra-addons` is the custom-modules volume. It is written as the pattern `/mnt/extra-addons*` so Odoo skips it quietly while no module is in it (a plain path would log "invalid addons directory" on every start and every `odoo` command) and loads it at the next start once a module is there. Odoo checks the pattern only when it starts, so after adding the first module, restart Odoo in its container (see [stack-and-runtime.md](stack-and-runtime.md#restarting-odoo)).
 
 `data_dir` is always `/var/lib/odoo` (`ODOO_DATA_DIR` in the script). The file is regenerated on each pod start — manual edits are lost on restart.

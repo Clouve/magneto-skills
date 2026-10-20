@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Restore/clone an Odoo DB from a filestore-aware zip via `odoo db load`.
 # Defaults to a NEUTRALIZED load and refuses to clobber the live DB.
+# Runs in the Magneto Agent container (it SSHes to Odoo itself), unlike
+# backup.sh, which is piped into the Odoo container:
+#   bash /clouve/skills/odoo/plugin/skills/odoo/scripts/restore.sh <target-db> <zip> [--prod]
 # Usage: restore.sh <target-db> <backup.zip-on-odoo-host> [--prod]
 set -euo pipefail
 
@@ -22,9 +25,10 @@ NEUTRALIZE="-n"
 [ "${ALLOW_PROD}" = "--prod" ] && NEUTRALIZE=""   # a real prod restore is NOT neutralized
 
 echo "[odoo/restore] loading ${ZIP} -> ${DB} ${NEUTRALIZE:+(neutralized)}"
-# `-c` goes between `db` and `load` (parent-parser option of the `db` command);
-# positional order is `load [database] <dump_file>` (db_name then dump path).
-"${SSH[@]}" "sudo odoo db -c /etc/odoo/odoo.conf load ${NEUTRALIZE} '${DB}' '${ZIP}'"
+# The config goes in ODOO_RC: `-c` after `load` fails on Odoo 19
+# ("unrecognized arguments"), and sudo over SSH drops the image's ODOO_RC.
+# Positional order is `load [database] <dump_file>` (db_name then dump path).
+"${SSH[@]}" "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db load ${NEUTRALIZE} '${DB}' '${ZIP}'"
 
 if [ -n "${NEUTRALIZE}" ]; then
   echo "[odoo/restore] confirming database.is_neutralized ..."

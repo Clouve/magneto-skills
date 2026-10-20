@@ -12,7 +12,7 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST}
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
 ```
 
-On first connection, accept the host key (`StrictHostKeyChecking accept-new` or answer `yes`). Subsequent connections reuse the known-hosts entry.
+On first connection, add `-o StrictHostKeyChecking=accept-new`: `sshpass` can't answer the yes/no host-key prompt, so it exits 6 without printing anything. Subsequent connections reuse the known-hosts entry.
 
 `clouve-ops` has **passwordless sudo** on both containers.
 
@@ -21,22 +21,21 @@ On first connection, accept the host key (`StrictHostKeyChecking accept-new` or 
 | Task | Channel |
 |---|---|
 | Run `odoo-bin`, read/edit `odoo.conf`, inspect filestore, restart service | SSH → Odoo container |
-| Postgres OS ops: `pg_dump`, `pg_restore`, `psql` without TCP auth | SSH → Postgres container, then `sudo -u postgres psql` |
+| Postgres OS ops: `pg_dump`, `pg_restore`, `psql` without TCP auth | SSH → Postgres container, then `sudo -u postgres psql -U ${ODOO_DB_USER}` (the superuser role is `${ODOO_DB_USER}`; there is no `postgres` role) |
 | ORM-driven data fixes, module inspection, scripted record updates | `odoo shell` (see below) — avoids raw SQL pitfalls |
 | Simple `SELECT` or schema inspection from agent environment | TCP `psql -h ${ODOO_DB_HOST} -U odoo -d <db>` (password in `$ODOO_DB_PASSWORD`) |
 
 ## `odoo shell`
 
-`odoo shell -d <dbname>` (`odoo/cli/shell.py`) starts an interactive Python REPL with the ORM fully loaded.
+`odoo shell -d <dbname>` (`odoo/cli/shell.py`) starts an interactive Python REPL with the ORM fully loaded. Over the clouve-ops channel, run `sudo odoo shell -c /etc/odoo/odoo.conf -d <dbname>`: `sudo` drops the `ODOO_RC` the image sets, and with no config the shell looks for PostgreSQL on a local socket and fails.
 
 ### Environment
 
-```python
-# Pre-defined names when -d is given
-env   # api.Environment(cr, SUPERUSER_ID, ctx) — full superuser access, no record rules
-self  # env.user  (the SUPERUSER user record)
-odoo  # the odoo module itself
-```
+Pre-defined names when `-d` is given:
+
+- `env`: `api.Environment(cr, SUPERUSER_ID, ctx)`, full superuser access, no record rules
+- `self`: `env.user` (the SUPERUSER user record)
+- `odoo`: the odoo module itself
 
 `uid = api.SUPERUSER_ID` — all access control and record rules are bypassed. Use this for data fixes, not routine inspection.
 
@@ -63,7 +62,7 @@ Do not call `env.cr.commit()` after every statement during exploratory sessions;
 
 ### Single database only
 
-If `db_name` in the config contains more than one database, `odoo shell` exits with an error. Pass exactly one: `odoo shell -d mydb`.
+If `db_name` in the config contains more than one database, `odoo shell` exits with an error. Pass exactly one: `odoo shell -c /etc/odoo/odoo.conf -d mydb`.
 
 ### Preferred REPL
 
@@ -73,4 +72,4 @@ If `ipython`, `ptpython`, or `bpython` is installed, the shell picks the first a
 
 - ORM-driven data fixes instead of raw SQL (safer: respects computed fields, onchange logic is not triggered but constraints run on save)
 - Inspecting model fields: `env['account.move'].fields_get().keys()`
-- Running a one-off script non-interactively: `odoo shell -d mydb < fix.py`
+- Running a one-off script non-interactively: `odoo shell -c /etc/odoo/odoo.conf -d mydb --no-http < fix.py`
