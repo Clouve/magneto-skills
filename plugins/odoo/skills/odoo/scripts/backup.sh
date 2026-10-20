@@ -75,4 +75,10 @@ then
   exit 1
 fi
 
-echo "[odoo/backup] done: ${OUT} ($(du -h "${OUT}" | cut -f1)); copy it off the container to keep it"
+SIZE="$(du -h "${OUT}" | cut -f1)"
+case "$(realpath -m "${OUT}")/" in
+  "$(realpath -m "${DATA_DIR}")"/*)
+    echo "[odoo/backup] done: ${OUT} (${SIZE}). It is on Odoo's data volume, which survives restarts, next to the data it protects; copy it off the deployment for a separate copy" ;;
+  *)
+    echo "[odoo/backup] done: ${OUT} (${SIZE}). This folder is not on Odoo's data volume, so it goes when the container is replaced; copy it off to keep it" ;;
+esac

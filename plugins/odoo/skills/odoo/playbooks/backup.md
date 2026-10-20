@@ -25,7 +25,7 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-ne
 
 The script is in this skill's own folder, here in the agent container. The Odoo container has no copy of it, and nothing needs installing there: `bash -s` reads the script from the pipe and runs it inside the Odoo container as root. It runs `odoo db dump`, writes `/var/lib/odoo/backups/<db>-<UTC timestamp>.zip` on Odoo's data volume, and checks that the ZIP holds `dump.sql`, `manifest.json` and the filestore. If the dump or the check fails, it exits non-zero and deletes the file.
 
-Its last line is the backup's path, for example `[odoo/backup] done: /var/lib/odoo/backups/odoo-20261020-071500.zip (516K); copy it off the container to keep it`. Note the path for step 5. To pick the path yourself, add it after the database name: `"sudo bash -s -- <db> /tmp/<db>.zip"`.
+Its last line is the backup's path and where it lives, for example `[odoo/backup] done: /var/lib/odoo/backups/odoo-20261020-071500.zip (516K). It is on Odoo's data volume, which survives restarts, next to the data it protects; copy it off the deployment for a separate copy`. `/var/lib/odoo` is that data volume, so a backup there is kept across restarts; copying it off (step 5) gives you a copy that doesn't share the volume with the data. Note the path for step 5. To pick the path yourself, add it after the database name: `"sudo bash -s -- <db> /tmp/<db>.zip"`.
 
 ### 2. Manual fallback: `odoo db dump` directly
 

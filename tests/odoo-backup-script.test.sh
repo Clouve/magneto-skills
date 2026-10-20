@@ -144,6 +144,9 @@ check "runs exactly 'odoo db dump acme <out>' with ODOO_RC set to odoo.conf, not
 [ -f "${target}" ] && zip_has "${target}" dump.sql && zip_has "${target}" manifest.json && zip_has "${target}" filestore/ab/ab12cd34
 check "creates the output folder and leaves the ZIP there" $?
 grep -qF "${target}" <<< "${out}"; check "prints where the backup is" $?
+done_line="$(grep -F 'done:' <<< "${out}" | tail -1)"
+grep -qi "not on Odoo's data volume" <<< "${done_line}" && grep -qi 'copy it off' <<< "${done_line}"
+check "says a backup outside data_dir is not on Odoo's data volume, so copy it off" $?
 
 # 2. Through `bash -s`, the way the playbook pipes it over SSH.
 reset_filestore
@@ -159,6 +162,13 @@ made="$(find "${data}/backups" -maxdepth 1 -type f -name 'acme-*.zip' 2>/dev/nul
 [ "${rc}" -eq 0 ] && [ "$(printf '%s\n' "${made}" | grep -c .)" -eq 1 ] \
   && [[ "$(basename "${made}")" =~ ^acme-[0-9]{8}-[0-9]{6}\.zip$ ]]
 check "defaults to <data_dir>/backups/<db>-<YYYYmmdd-HHMMSS>.zip" $?
+# The default path is on Odoo's data volume, which survives restarts: the done line must say so, and must not
+# suggest the backup is lost unless copied off (the assistant read "copy it off the container to keep it" that way
+# and told a customer the folder wasn't persistent, 2026-10-20).
+done_line="$(grep -F 'done:' <<< "${out}" | tail -1)"
+grep -qi "on Odoo's data volume" <<< "${done_line}" && grep -qi 'survives restarts' <<< "${done_line}" \
+  && ! grep -qi -E 'to keep it|not on Odoo' <<< "${done_line}"
+check "says a default backup is on Odoo's data volume and survives restarts" $?
 
 # 4. odoo db dump fails: non-zero, and the empty file it left is gone.
 reset_filestore
