@@ -23,7 +23,7 @@ This skill's defining constraint is the channel matrix. From the Magneto Agent c
 
 WordPress leaks usernames through two public surfaces. Both are HTTP-checkable without auth; neither is fixable from the agent today.
 
-Discover the sibling host first (`env | grep -iE 'wordpress|host'`), then:
+Discover the sibling host first (`compgen -e | grep -iE 'wordpress|host'`), then:
 
 **Author-archive redirect.** A request for `?author=<n>` 301-redirects to `/author/<login-slug>/`, and the slug is usually the exact `user_login`:
 

@@ -52,7 +52,7 @@ SELECT option_value FROM wp_options WHERE option_name='_site_transient_update_pl
 
 ## Taking the DB dump [TCP-mysql]
 
-Store backups under `$HOME` (persistent across pod restarts; `/tmp` and `/clouve` are not). Discover env names first: `env | grep -iE 'wordpress|mysql|maria|host'`. Examples assume the default `wp_` prefix — confirm with `SHOW TABLES LIKE '%options';`.
+Store backups under `$HOME` (persistent across pod restarts; `/tmp` and `/clouve` are not). Discover env names first: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`. Examples assume the default `wp_` prefix — confirm with `SHOW TABLES LIKE '%options';`.
 
 ```bash
 mkdir -p "$HOME/backups"

@@ -6,15 +6,17 @@ Odoo 19.0. Authored against `odoo/cli/module.py`, `odoo/modules/{loading,migrati
 
 ## Install, upgrade, and uninstall — the two interfaces
 
+On Clouve, run these inside the Odoo container with `sudo` over the clouve-ops channel, and keep `-c /etc/odoo/odoo.conf`: `sudo` drops the image's `ODOO_RC`, and without the config Odoo can't reach the database. `-c` goes before `-d` with the classic flags, and after the subcommand with `module`.
+
 ### Classic flags (require `--stop-after-init` for one-shot use)
 
 ```bash
 # Install
-odoo-bin -d <dbname> -i <module>[,<module>,...] --stop-after-init
+odoo-bin -c /etc/odoo/odoo.conf -d <dbname> -i <module>[,<module>,...] --stop-after-init
 
 # Upgrade (single module or everything)
-odoo-bin -d <dbname> -u <module>[,<module>,...] --stop-after-init
-odoo-bin -d <dbname> -u all --stop-after-init
+odoo-bin -c /etc/odoo/odoo.conf -d <dbname> -u <module>[,<module>,...] --stop-after-init
+odoo-bin -c /etc/odoo/odoo.conf -d <dbname> -u all --stop-after-init
 ```
 
 Both `-i` and `-u` **require `-d`** (database name). They are CLI-only operations that mutate the database. Without `--stop-after-init` the Odoo server continues running after the operation; use `--stop-after-init` for scripted/one-shot invocations. (`config.py:227–232, 431–432`)
@@ -24,10 +26,10 @@ Both `-i` and `-u` **require `-d`** (database name). They are CLI-only operation
 Source: `odoo/cli/module.py` — registered as the `module` subcommand with four sub-subcommands.
 
 ```bash
-odoo-bin module install    -d <dbname> <module> [<module>...]
-odoo-bin module upgrade    -d <dbname> <module>|all [--outdated]
-odoo-bin module uninstall  -d <dbname> <module> [<module>...]
-odoo-bin module force-demo -d <dbname>          # installs demo data (development only)
+odoo-bin module install    -c /etc/odoo/odoo.conf -d <dbname> <module> [<module>...]
+odoo-bin module upgrade    -c /etc/odoo/odoo.conf -d <dbname> <module>|all [--outdated]
+odoo-bin module uninstall  -c /etc/odoo/odoo.conf -d <dbname> <module> [<module>...]
+odoo-bin module force-demo -c /etc/odoo/odoo.conf -d <dbname>          # installs demo data (development only)
 ```
 
 The subcommand always passes `--no-http` internally (`module.py`: `config_args = ['--no-http']`), so no HTTP server is started. It also enforces a **single database** — the parser errors out if more than one DB name is resolved from the config (`module.py`: `if not db_names or len(db_names) > 1: self.parser.error(...)`).
@@ -102,7 +104,7 @@ See `playbooks/recover-stuck-module-state.md` for the full step-by-step, includi
 
 ## Third-party addons — security posture
 
-Third-party addons installed into `/mnt/extra-addons` (already on `addons_path`) run **arbitrary Python with full database access** at the ORM SUPERUSER level. There is no sandboxing.
+Third-party addons installed into `/mnt/extra-addons` (on `addons_path` as the pattern `/mnt/extra-addons*`, loaded at Odoo's next start once a module is in it) run **arbitrary Python with full database access** at the ORM SUPERUSER level. There is no sandboxing.
 
 Before installing any third-party addon:
 1. Read `__manifest__.py` — check `depends`, `version`, and `license`.

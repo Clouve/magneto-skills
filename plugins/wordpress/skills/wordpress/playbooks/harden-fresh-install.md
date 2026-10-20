@@ -11,7 +11,7 @@ The rationale behind every item is in [../reference/security.md](../reference/se
 Everything branches on this. Confirm which shape you are on and whether a shell exists, per [../reference/stack-and-runtime.md](../reference/stack-and-runtime.md) and [../reference/shell-access.md](../reference/shell-access.md):
 
 ```bash
-env | grep -iE 'wordpress|mysql|maria|host'                       # discover sibling names/creds
+compgen -e | grep -iE 'wordpress|mysql|maria|host'                       # names only: the sibling host and DB variables
 SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
   clouve-ops@"${WORDPRESS_HOST}" true && echo "shell: yes" || echo "shell: no (expected today)"
 ```

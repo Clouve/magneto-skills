@@ -52,7 +52,22 @@ Selection logic in `start()`:
 | `SIGHUP` | Sets `server_phoenix = True`, initiates re-exec of the process |
 | `SIGQUIT` | Dumps stack traces (no shutdown) |
 
-**Restart in a container = pod recycle**, not `kill -HUP`. The container has a single process (PID 1); `SIGHUP` re-execs within the same container lifetime and is not the right lever for a clean restart in Kubernetes. Recycle the pod instead.
+## Restarting Odoo
+
+Odoo is PID 1 in its container: the entrypoint `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`, and the clouve-ops `sshd` runs as its child. To restart Odoo, send it `SIGHUP` over the clouve-ops channel:
+
+```bash
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+  'grep -q odoo /proc/1/cmdline && sudo kill -HUP 1'
+for i in $(seq 1 30); do
+  sleep 2
+  curl -fsS -o /dev/null "http://${ODOO_HOST}:8069/web/health" && { echo "Odoo is back"; break; }
+done
+```
+
+Odoo gives in-flight requests up to a second, logs "Initiating server reload", and re-executes itself with the same arguments (`_reexec()` in `odoo/service/server.py`). The container keeps running, `sshd` and your SSH session survive, and `/web/health` answers again within seconds. Checked on Odoo 19 on 2026-10-20: about half a second on a small database, two restarts in a row, same container, no container restart. The new process reads `odoo.conf` and `addons_path` again, so it loads a module folder just added to `/mnt/extra-addons`. It does not rerun the entrypoint, so environment changes don't apply.
+
+Installing or upgrading a module needs no restart (see [playbooks/install-or-upgrade-module.md](../playbooks/install-or-upgrade-module.md)). Don't send `SIGTERM` or `SIGKILL` to PID 1: Odoo exits and the container stops with it. And don't hand restarts to the tenant: the Clouve dashboard has no restart button.
 
 ## Canonical paths (this image)
 

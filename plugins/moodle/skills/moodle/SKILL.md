@@ -2,7 +2,7 @@
 name: moodle
 description: Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
-version: 0.1.2
+version: 0.1.3
 authoredAgainst: moodle v5.2.0
 ---
 
@@ -34,11 +34,12 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 9. **Caches are global and stale-by-default after schema or `config.php` changes.** After ANY upgrade, plugin install/uninstall, or `config.php` edit, run [scripts/purge-caches.sh](scripts/purge-caches.sh) — otherwise users see stale strings, broken navigation, or silently-disabled features.
 10. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 11. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
+12. **Set a password for a user synced from Gibbon (`auth = 'db'`) with Moodle's API, and clear `create_password`.** `admin/cli/reset_password.php` only finds `auth = 'manual'` accounts. The External Database sync tags every user it creates with the `create_password` preference, and Moodle's "Send new user passwords" task replaces that user's password with a random one at its next run (every minute here) and emails it. So after `update_internal_user_password()`, call `unset_user_preference('create_password', $user)`, or the password you hand over stops working within a minute. → [playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md).
 
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
-- Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MySQL 8.4; Moodle 5.2 also supports MariaDB ≥10.11 and PostgreSQL ≥16 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `env | grep -i moodle` before relying on any specific one.
+- Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MySQL 8.4; Moodle 5.2 also supports MariaDB ≥10.11 and PostgreSQL ≥16 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `compgen -e | grep -i moodle` (names only) before relying on any specific one, and pass a value as `$(printenv NAME)` without printing it.
 - You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env); connect with `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 
 ## What changed in 5.2 (the things that bite operators)

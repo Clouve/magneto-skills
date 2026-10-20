@@ -54,7 +54,7 @@ Moodle 5.2 supports the following DB engines — declared in `environment.xml` a
 
 ### Clouve packaging
 
-The Magneto-shipped image uses **MariaDB**, see [apps/moodle/docker-compose.yml](../../../../apps/moodle/docker-compose.yml). Confirm with `env | grep -i moodle_db` — the username and DB name are usually `moodle`. The actual MariaDB version is shipped in [apps/moodle/image/mysql/Dockerfile](../../../../apps/moodle/image/mysql/Dockerfile).
+The Magneto-shipped image uses **MariaDB**, see [apps/moodle/docker-compose.yml](../../../../apps/moodle/docker-compose.yml). Confirm with `compgen -e | grep -i moodle_db` — the username and DB name are usually `moodle`. The actual MariaDB version is shipped in [apps/moodle/image/mysql/Dockerfile](../../../../apps/moodle/image/mysql/Dockerfile).
 
 If the user asks about migrating to Postgres, that is a one-way data migration and a different skill — flag the [Migrating to a different database upstream guide](https://docs.moodle.org/502/en/Converting_your_MySQL_database_to_UTF8mb4) and surface it as a separate engagement.
 

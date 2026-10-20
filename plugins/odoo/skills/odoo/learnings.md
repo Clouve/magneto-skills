@@ -98,3 +98,39 @@ When `admin_passwd` is still `'admin'` (the compiled-in default), the first POST
 **Origin:** Authoring the accounting-integrity reference and safe-data-fix playbook.
 
 There are no PostgreSQL triggers or constraints protecting `account_move` or `account_move_line`. Every integrity check is in Odoo's Python ORM. One raw `UPDATE account_move SET date = ...` on a hashed entry invalidates that entry's `inalterable_hash`, which cascades to every later entry in the same journal prefix — their hashes become wrong because they chain to the modified entry. **There is no recalculation path.** The only recovery is a restore from a pre-corruption backup. Always use `_reverse_moves()` or `button_cancel()` — never raw SQL. See [reference/accounting-integrity.md](reference/accounting-integrity.md) and [playbooks/safe-data-fix.md](playbooks/safe-data-fix.md).
+
+---
+
+### 2026-10-20 — backups run inside the Odoo container via ODOO_RC
+
+**Category:** correction
+**Origin:** The 4.4.0 video shoot (2026-10-19), where the backup step took three tries.
+
+The Odoo container has no copy of `scripts/backup.sh`: pipe the skill's own copy in with `sudo bash -s -- <db>` ([playbooks/backup.md](playbooks/backup.md)). `odoo db` takes its config as `ODOO_RC=/etc/odoo/odoo.conf`; `-c` after `dump` or `load` is an error ([reference/backup-restore.md](reference/backup-restore.md#cli-vs-http--prefer-the-cli)).
+
+---
+
+### 2026-10-20 — restart Odoo with SIGHUP; install while it runs
+
+**Category:** correction
+**Origin:** Same shoot: the install playbook asked for pod restarts the agent can't do.
+
+Odoo is PID 1 in its container and re-executes itself on `sudo kill -HUP 1`. Module installs and upgrades run while it serves. See [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo) and [playbooks/install-or-upgrade-module.md](playbooks/install-or-upgrade-module.md).
+
+---
+
+### 2026-10-20 — sudo over SSH drops ODOO_RC; no postgres role
+
+**Category:** env-quirk
+**Origin:** Running every command in the skill against an Odoo 19 container.
+
+An `odoo` command run with `sudo` over the clouve-ops channel needs its config (`-c /etc/odoo/odoo.conf`, or `ODOO_RC=` for `odoo db`), or it looks for PostgreSQL on a local socket. In the Postgres container the superuser role is `${ODOO_DB_USER}`, so `psql` and `pg_dump` run as `sudo -u postgres` need `-U ${ODOO_DB_USER}`. Fixed in place across the playbooks.
+
+---
+
+### 2026-10-20 — /mnt/extra-addons is on addons_path as a pattern
+
+**Category:** env-quirk
+**Origin:** Odoo logged "invalid addons directory '/mnt/extra-addons'" on every command.
+
+The image writes `addons_path = ...,/mnt/extra-addons*`. Odoo skips the folder quietly while it holds no module and loads it at the next start once one is there, so restart Odoo (`SIGHUP`) after adding the first module. Images built before 2026-10-20 list the plain path and log that warning while the folder is empty; it is harmless. See [reference/configuration.md](reference/configuration.md#this-images-conf-template).

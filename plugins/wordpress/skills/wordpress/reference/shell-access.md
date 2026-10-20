@@ -17,7 +17,7 @@ This file is the channel matrix: what each channel gives you, how credentials ar
 The `mysql` and `mysqldump` clients are installed on the agent by this plugin's `install.sh`. Credentials arrive as env vars: the sidecar env fetcher re-exports the sibling containers' environment into your shell. **Names vary between deployments — always discover before relying on a var name:**
 
 ```bash
-env | grep -iE 'wordpress|mysql|maria|host'
+compgen -e | grep -iE 'wordpress|mysql|maria|host'
 ```
 
 Expect the `WORDPRESS_DB_*` set (host, name, user, password) — that is your TCP credential. In the commands throughout this skill, `${WORDPRESS_HOST}` stands for the discovered web-container hostname and `${WORDPRESS_DB_*}` for the discovered credential set; substitute what discovery actually printed.

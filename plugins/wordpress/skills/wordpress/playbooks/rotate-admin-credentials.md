@@ -23,7 +23,7 @@ This is the **"reset a user password / rotate admin credentials"** gate from [SK
 This doubles as the gate's identity check and as the "one row, then act" confirmation for a targeted write to a crown-jewel table.
 
 ```bash
-env | grep -iE 'wordpress|mysql|maria|host'   # discover DB creds/host first
+compgen -e | grep -iE 'wordpress|mysql|maria|host'   # names only: the DB variables and the sibling host
 
 MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -e \

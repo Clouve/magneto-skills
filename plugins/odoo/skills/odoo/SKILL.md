@@ -2,7 +2,7 @@
 name: odoo
 description: 'Safely operate an Odoo 19.0 ERP install — install/upgrade modules, filestore-aware backups and restores, prod→staging neutralization, database-manager hardening, and diagnosing module/upgrade failures — without corrupting accounting or framework data. Use when the user is running the Clouve Odoo app, mentions "Odoo", `odoo-bin`, `odoo.conf`, the master password, `account.move`, `ir_model_data`, `ir.config_parameter`, the filestore, or `/web/database/manager`. Do not use for generic Python/PostgreSQL/Linux questions that are not tied to an Odoo instance.'
 type: devops
-version: 0.1.1
+version: 0.1.2
 authoredAgainst: odoo 19.0
 ---
 
@@ -23,9 +23,9 @@ Use this skill when the user is working with the Clouve Odoo app, when they ment
 
 ## Operating principles (golden rules — load-bearing — read before any destructive action)
 
-1. **A complete backup is the PG dump AND the filestore.** Prefer `odoo-bin db dump <db> <out.zip>` — it produces a ZIP of `dump.sql` (`pg_dump --no-owner`) + `filestore/` + `manifest.json`, bypasses the master password, and is the only self-contained restore unit. A hand-rolled `pg_dump` alone silently omits the per-DB filestore (`/var/lib/odoo/filestore/<dbname>`); missing attachment files read back as empty `b''` with no error. → [reference/backup-restore.md](reference/backup-restore.md), [scripts/backup.sh](scripts/backup.sh).
+1. **A complete backup is the PG dump AND the filestore.** Prefer `odoo-bin db dump <db> <out.zip>` — it produces a ZIP of `dump.sql` (`pg_dump --no-owner`) + `filestore/` + `manifest.json`, bypasses the master password, and is the only self-contained restore unit. A hand-rolled `pg_dump` alone silently omits the per-DB filestore (`/var/lib/odoo/filestore/<dbname>`); missing attachment files read back as empty `b''` with no error. Take backups by piping the skill's own [scripts/backup.sh](scripts/backup.sh) into the Odoo container ([playbooks/backup.md](playbooks/backup.md), step 1). By hand, give the config as `ODOO_RC=/etc/odoo/odoo.conf`: `-c` after `dump` is an error. → [reference/backup-restore.md](reference/backup-restore.md).
 
-2. **`odoo` ≡ `odoo-bin`.** Both shim `odoo.cli.main()`. Module changes are one-shot: `odoo-bin -d <db> -i <module> --stop-after-init` (install) or `odoo-bin -d <db> -u <module> --stop-after-init` (upgrade). Both require `-d`, are CLI-only, mutate, and must use `--stop-after-init` for a one-shot run. Module **uninstall** executes `DROP TABLE/COLUMN CASCADE` plus cascades to dependents — it is irreversible; the only recovery is restore from backup. → [reference/module-lifecycle.md](reference/module-lifecycle.md).
+2. **`odoo` ≡ `odoo-bin`.** Both shim `odoo.cli.main()`. Install or upgrade a module while the server keeps serving, with the `module` subcommand: `sudo odoo module install -c /etc/odoo/odoo.conf -d <db> <module>` (or `module upgrade`); the server reloads its registry by itself. The classic flags do the same as a one-shot run: `sudo odoo -c /etc/odoo/odoo.conf -d <db> -i <module> --stop-after-init` (`-u` to upgrade). Over the clouve-ops channel every `odoo` command needs the config (`-c /etc/odoo/odoo.conf`, or `ODOO_RC=` for `odoo db`), because `sudo` drops the image's `ODOO_RC`. Module **uninstall** executes `DROP TABLE/COLUMN CASCADE` plus cascades to dependents — it is irreversible; the only recovery is restore from backup. → [reference/module-lifecycle.md](reference/module-lifecycle.md).
 
 3. **`odoo shell` rolls back unless you `env.cr.commit()`.** The shell runs as SUPERUSER and calls `cr.rollback()` both before and after the session. Changes that are not followed by an explicit `env.cr.commit()` are silently discarded. → [reference/shell-access.md](reference/shell-access.md).
 
@@ -42,28 +42,30 @@ Use this skill when the user is working with the Clouve Odoo app, when they ment
 
 6. **Never expose `/web/database/*`; treat `admin_passwd` like an API key.** All nine `/web/database/*` routes are `auth='none'`; the mutating ones are `csrf=False`; the only gate is the master password. While `admin_passwd` is still the default `'admin'`, the first submitted password is silently adopted. The real kill-switch is `list_db=False` (or `--no-database-list`) **plus** a pinned `db_name`/`dbfilter`; the manager GET page still returns 200 with a banner when disabled, so verify lockdown via the POST endpoints and block the `/web/database/` prefix at the ingress. → [reference/security.md](reference/security.md), [playbooks/harden-db-manager.md](playbooks/harden-db-manager.md).
 
-7. **A "restart" is a pod recycle, not a signal to PID 1; logs go to stderr.** Odoo is the container's main process (PID 1, `workers=0` threaded server). `SIGTERM` is graceful (a second forces exit); `SIGHUP` re-execs. A restart is a pod/container recycle. Logs are StreamHandler→stderr (no `--logfile` set) — read via `kubectl logs` / `docker logs`. There is no `/var/log/odoo` path and no web server process in this container. → [reference/observability.md](reference/observability.md), [reference/stack-and-runtime.md](reference/stack-and-runtime.md).
+7. **Restart Odoo inside its container with `SIGHUP`; logs go to stderr.** Odoo is the container's main process (PID 1, `workers=0` threaded server). `sudo kill -HUP 1` over the clouve-ops channel makes it finish in-flight requests and re-execute itself in place: same container, back within seconds, `odoo.conf` and `addons_path` read again. Installing or upgrading a module needs no restart; new code in `/mnt/extra-addons` does. Never send `SIGTERM` or `SIGKILL` to PID 1 (the container stops with it), and don't hand restarts to the tenant: the Clouve dashboard has no restart button. Logs are StreamHandler→stderr (no `--logfile` set), read through the platform's log view (`kubectl logs` / `docker logs`). There is no `/var/log/odoo` path and no web server process in this container. → [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo), [reference/observability.md](reference/observability.md).
 
-8. **Any non-production clone must be neutralized before use.** `odoo-bin neutralize -d <db>` (add `--stdout` to audit first) disables mail servers, all crons (except autovacuum), payment providers, and webhooks, and sets `database.is_neutralized=true`. Skipping this step risks sending real emails or processing real payments from the clone. → [reference/neutralization.md](reference/neutralization.md), [playbooks/restore-and-clone.md](playbooks/restore-and-clone.md).
+8. **Any non-production clone must be neutralized before use.** `sudo odoo neutralize -c /etc/odoo/odoo.conf -d <db>` (add `--stdout` to audit first) disables mail servers, all crons (except autovacuum), payment providers, and webhooks, and sets `database.is_neutralized=true`. Skipping this step risks sending real emails or processing real payments from the clone. → [reference/neutralization.md](reference/neutralization.md), [playbooks/restore-and-clone.md](playbooks/restore-and-clone.md).
 
-9. **Vet third-party addons before install.** Addons installed into `/mnt/extra-addons` (which is already on `addons_path`) run arbitrary Python with full DB access and filestore write. Read `__manifest__.py` and the top-level Python before installing. → [reference/module-lifecycle.md](reference/module-lifecycle.md).
+9. **Vet third-party addons before install.** Addons go in `/mnt/extra-addons` (on `addons_path` as the pattern `/mnt/extra-addons*`, which Odoo loads at its next start once a module is in it). They run arbitrary Python with full DB access and filestore write. Read `__manifest__.py` and the top-level Python before installing. → [reference/module-lifecycle.md](reference/module-lifecycle.md).
 
 10. **Never expose the AI Assistant's access key** (`MAGNETO_AGENT_LLM_KEY`; `ANTHROPIC_AUTH_TOKEN` in your session). Clouve manages and rotates it, one key per deployment. Never print it, copy it to another path, or send it anywhere.
 
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
-- Odoo is reachable at `${ODOO_HOST}:8069`. The Odoo database runs at `${ODOO_DB_HOST}` (PostgreSQL). Both are injected into your environment by the platform — confirm the actual variable names with `env | grep -i odoo` before relying on any specific one.
+- Odoo is reachable at `${ODOO_HOST}:8069`. The Odoo database runs at `${ODOO_DB_HOST}` (PostgreSQL). Both are injected into your environment by the platform — confirm the actual variable names with `compgen -e | grep -i odoo` (names only; never print the values: some of them are passwords) before relying on any specific one.
 - You have an interactive shell in the Odoo and Postgres containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env). Connect with:
   ```bash
   SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST}
   SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
   ```
+  On the first connection add `-o StrictHostKeyChecking=accept-new`: while the host key is unknown, `sshpass` exits 6 without printing anything.
+- `sudo` in these sessions drops the `ODOO_RC` the image sets, so give every `odoo` command its config: `-c /etc/odoo/odoo.conf` for the server, `shell` and `module` commands, `ODOO_RC=/etc/odoo/odoo.conf` in front of `odoo db`. The database's superuser role is `${ODOO_DB_USER}`; there is no `postgres` role, so `psql` and `pg_dump` run as `sudo -u postgres` need `-U ${ODOO_DB_USER}`.
 - Use the SSH channel for OS-level operations (running `odoo-bin`, reading logs, editing `odoo.conf`). Use the TCP PostgreSQL connection (`psql`) for read-only queries and gated writes. → [reference/shell-access.md](reference/shell-access.md).
 
 ## Pointers into the deeper docs
 
-- [reference/stack-and-runtime.md](reference/stack-and-runtime.md) — Odoo 19.0 entrypoints (`odoo` ≡ `odoo-bin`), Python/PG version requirements, filesystem layout, process model, subcommand registry.
+- [reference/stack-and-runtime.md](reference/stack-and-runtime.md) — Odoo 19.0 entrypoints (`odoo` ≡ `odoo-bin`), Python/PG version requirements, filesystem layout, process model, subcommand registry, restarting Odoo with `SIGHUP`.
 - [reference/configuration.md](reference/configuration.md) — `odoo.conf` / `odoo-bin` option cheat sheet: `admin_passwd`, `list_db`, `db_name`/`dbfilter`, `proxy_mode`, `data_dir`, `addons_path`, `workers`, `logfile`; env-var-driven pattern.
 - [reference/data-model.md](reference/data-model.md) — never-touch tables and columns, safe-to-read tables, how `ir_model_data`, `ir_config_parameter`, `ir_module_module`, `res_users` work.
 - [reference/file-storage.md](reference/file-storage.md) — filestore layout (`<data_dir>/filestore/<dbname>`, content-addressed `sha1[:2]/sha1`), attachment model, missing-file silent-empty behaviour.
@@ -74,15 +76,15 @@ Use this skill when the user is working with the Clouve Odoo app, when they ment
 - [reference/neutralization.md](reference/neutralization.md) — what `odoo-bin neutralize` disables, `--stdout` audit mode, `database.is_neutralized` sentinel, when to run it.
 - [reference/observability.md](reference/observability.md) — stderr log model, `--log-handler MODULE:LEVEL`, reading via `kubectl/docker logs`, no `logfile` in the container, no separate web-server log path.
 - [reference/shell-access.md](reference/shell-access.md) — `odoo shell` SUPERUSER env, rollback-unless-commit, `env.cr.commit()` pattern; `clouve-ops` SSH channel safety gates.
-- [playbooks/install-or-upgrade-module.md](playbooks/install-or-upgrade-module.md) — step-by-step module install/upgrade including backup gate, addon-path placement, one-shot `odoo-bin` invocation, post-upgrade verification.
-- [playbooks/backup.md](playbooks/backup.md) — pre-action backup procedure using `odoo-bin db dump`; manual fallback; verification steps.
+- [playbooks/install-or-upgrade-module.md](playbooks/install-or-upgrade-module.md) — step-by-step module install/upgrade while Odoo keeps serving: backup gate, third-party code into `/mnt/extra-addons` plus an in-container `SIGHUP` restart, one-shot install, verification.
+- [playbooks/backup.md](playbooks/backup.md) — pre-action backup: pipe `scripts/backup.sh` into the Odoo container; manual `odoo db dump` and `pg_dump` fallbacks; copying the backup off the container.
 - [playbooks/restore-and-clone.md](playbooks/restore-and-clone.md) — restore from ZIP via `odoo-bin db load`, prod→staging clone workflow, mandatory neutralization step.
 - [playbooks/harden-db-manager.md](playbooks/harden-db-manager.md) — set `admin_passwd`, enable `list_db=False` + `db_name`/`dbfilter`, verify via POST endpoint, block `/web/database/` at ingress.
 - [playbooks/recover-stuck-module-state.md](playbooks/recover-stuck-module-state.md) — diagnose `to install`/`to upgrade`/`to remove` stuck states; `button_reset_state()` / `reset_modules_state()` recovery; when a restore is the only path.
 - [playbooks/safe-data-fix.md](playbooks/safe-data-fix.md) — using `odoo shell` with `env.cr.commit()` for safe ORM-level data fixes; accounting-table guardrails.
-- [scripts/backup.sh](scripts/backup.sh) — wraps `odoo-bin db dump`; pg_dump+filestore-tar fallback.
-- [scripts/restore.sh](scripts/restore.sh) — wraps `odoo-bin db load -n`; guards against overwriting a prod-named DB.
-- [scripts/check-hash-integrity.sh](scripts/check-hash-integrity.sh) — pipes `env['res.company']._check_hash_integrity()` through `odoo shell`.
+- [scripts/backup.sh](scripts/backup.sh) — runs inside the Odoo container, piped there over SSH (`sudo bash -s -- <db>`): `odoo db dump` with `ODOO_RC`, then checks the ZIP holds `dump.sql`, `manifest.json` and the filestore.
+- [scripts/restore.sh](scripts/restore.sh) — runs here in the agent container and SSHes to Odoo itself; wraps `odoo-bin db load -n`; guards against overwriting a prod-named DB.
+- [scripts/check-hash-integrity.sh](scripts/check-hash-integrity.sh) — runs here in the agent container; pipes `env['res.company']._check_hash_integrity()` through `odoo shell`.
 - [learnings.md](learnings.md) — living scratchpad for Odoo-specific facts captured during real sessions that don't yet justify their own file.
 
 ## Maintaining this skill
@@ -133,13 +135,13 @@ The gates are the reason this skill exists. If any of these are skipped, assume 
 | Action | Gate |
 |---|---|
 | Any multi-row `UPDATE`/`DELETE` on Odoo tables | `SELECT COUNT(*)` first + user ack |
-| Schema change / module upgrade / uninstall | `odoo-bin db dump <db> <out.zip>` backup + user ack |
+| Schema change / module upgrade / uninstall | Filestore-aware backup ([playbooks/backup.md](playbooks/backup.md)) + user ack |
 | Edit `odoo.conf` | Show diff + user ack; prefer env-var-driven configuration |
 | Install a third-party addon | Read `__manifest__.py` + top-level Python; confirm trusted source; user ack |
 | Drop or restore a database (`odoo-bin db drop` / `odoo-bin db load`) | Full backup (dump + filestore) + user ack |
 | Any write to `account_move*` | Refuse; route through reversal/credit note instead |
 | Change `admin_passwd` or `list_db` | Confirm new value + verify ingress blocks `/web/database/`; user ack |
 | `odoo shell` data fix | Show the exact `env.cr.commit()` call + affected record count; user ack before commit |
-| Restore a prod DB to a non-prod environment | Neutralize immediately after restore (`odoo-bin neutralize -d <db>`); no exceptions |
+| Restore a prod DB to a non-prod environment | Neutralize immediately after restore (`sudo odoo neutralize -c /etc/odoo/odoo.conf -d <db>`); no exceptions |
 
 "User ack" means: print the exact command you are about to run and wait for the user to reply affirmatively before executing. Do not infer consent from an earlier "go ahead."

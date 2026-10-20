@@ -6,7 +6,7 @@ Use this playbook when the tenant is moving the site to a new domain (custom dom
 
 Work through this before touching anything:
 
-1. **Which shape?** Probe per [reference/stack-and-runtime.md](../reference/stack-and-runtime.md). Quick signal: `env | grep -iE 'wordpress|mysql|maria|host'` in the agent — a `WORDPRESS_SITE_URL` in the re-exported sibling env means the Clouve-packaged app (Shape A). Names vary; discover, don't assume.
+1. **Which shape?** Probe per [reference/stack-and-runtime.md](../reference/stack-and-runtime.md). Quick signal: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` in the agent — a `WORDPRESS_SITE_URL` in the re-exported sibling env means the Clouve-packaged app (Shape A). Names vary; discover, don't assume.
 2. **Is the new URL platform-real?** WordPress can only be told which URL it lives at — making that URL actually route to this pod (DNS, ingress, TLS) is platform work the tenant does in the Clouve console. This playbook handles WordPress's side only. If the new URL doesn't serve *anything* yet, stop and have the tenant finish the platform side first.
 3. **Branch:**
 

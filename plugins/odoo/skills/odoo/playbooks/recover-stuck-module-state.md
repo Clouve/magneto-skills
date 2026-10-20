@@ -33,11 +33,11 @@ If `value = '1'`, the database is flagged as partially updated and crons are sus
 ## Step 2: Take a backup before any recovery action
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo -E bash /var/lib/odoo/scripts/backup.sh <db>"
+SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+  "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
-If `scripts/backup.sh` is not present, follow [playbooks/backup.md](backup.md).
+This pipes the skill's own `scripts/backup.sh` into the Odoo container. [playbooks/backup.md](backup.md) has the manual fallback and the copy step.
 
 ## Step 3: Reset stuck module states via `odoo shell`
 
@@ -47,7 +47,7 @@ If `scripts/backup.sh` is not present, follow [playbooks/backup.md](backup.md).
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 # button_reset_state() transitions:
 #   'to install'  → 'uninstalled'
 #   'to upgrade'  → 'installed'
@@ -63,7 +63,7 @@ EOF"
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 from odoo.modules.loading import reset_modules_state
 reset_modules_state('<db>')
 env.cr.commit()
@@ -86,7 +86,7 @@ If it is still `'1'`, clear it via the shell:
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -d <db> --no-http <<'EOF'
+  "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 param = env['ir.config_parameter'].sudo().search([('key', '=', 'base.partially_updated_database')])
 param.unlink()
 env.cr.commit()
@@ -94,16 +94,9 @@ print('Flag cleared.')
 EOF"
 ```
 
-## Step 5: Recycle the pod and re-run the upgrade
+## Step 5: Re-run the upgrade
 
-After resetting states, recycle the pod (Odoo is PID 1 in this container — there is no systemd or supervisor; see SKILL.md rule #7):
-
-```bash
-kubectl rollout restart deployment/<odoo-deployment>
-kubectl rollout status deployment/<odoo-deployment>
-```
-
-Then re-run the module upgrade that was interrupted (see [playbooks/install-or-upgrade-module.md](install-or-upgrade-module.md)):
+Odoo stays up. Re-run the module upgrade that was interrupted (see [playbooks/install-or-upgrade-module.md](install-or-upgrade-module.md)); when it finishes, the running server reloads its registry by itself. If the module's code in `/mnt/extra-addons` changed since Odoo last started, restart Odoo in its container first (`SIGHUP`, step 2 of that playbook):
 
 ```bash
 SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \

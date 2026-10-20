@@ -40,6 +40,7 @@ Notes:
       "sudo -u www-data php /var/www/html/admin/cli/reset_password.php --username='<user>' --password=\"$NEWPASS\""
   unset NEWPASS
   ```
+- `reset_password.php` only finds accounts with `auth = 'manual'` (its lookup filters on it), so for any other auth method it stops with "Can not find user". In the Education Kit, the students and staff that Moodle syncs from Gibbon are `auth = 'db'`. Set their password from a short CLI script run as `www-data` that reads the password from stdin and calls `update_internal_user_password($user, $password)`, then `unset_user_preference('create_password', $user)`, plus `set_user_preference('auth_forcepasswordchange', 1, $user)` for a temporary one. The unset matters: the sync tags every user it creates with `create_password`, and Moodle's "Send new user passwords" task replaces that user's password with a random one at its next run (each cron run, every minute here) and emails it. Without the unset, the password you hand over stops working within a minute of the sync. Check it after the next cron run, not just straight away. Their account stays `auth = 'db'`, so Gibbon keeps owning the name, email and status. The External Database sync is `public/auth/db/cli/sync_users.php` on Moodle 5.x (checked in the kit's Moodle 5.2 container, 2026-10-20).
 
 ### 3. Force a password change on next login
 
