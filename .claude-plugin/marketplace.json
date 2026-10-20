@@ -11,7 +11,7 @@
       "name": "ai-studio",
       "source": "./plugins/ai-studio",
       "description": "Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — on the user's behalf — install software, write code, run supervised services, debug, and verify.",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "category": "DevOps",
       "tags": ["devops", "workspace", "ubuntu", "ssh", "ai-studio"],
       "author": {
