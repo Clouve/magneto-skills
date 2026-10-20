@@ -2,7 +2,7 @@
 
 Failure modes seen in the wild and the **first** thing to check for each. Stop after one diagnostic step — if the answer isn't obvious, escalate the diagnosis flow rather than running 5 tools at once. Every probe is channel-labeled ([reference/shell-access.md](shell-access.md)); remember there is **no shell and no wp-cli** on today's WordPress deployments, so each entry gives the live TCP/HTTP path and says plainly when only a file channel or support can finish the job.
 
-`${WORDPRESS_HOST}` / `${WORDPRESS_DB_*}` below are the discovered names — run `env | grep -iE 'wordpress|mysql|maria|host'` first.
+`${WORDPRESS_HOST}` / `${WORDPRESS_DB_*}` below are the discovered names — run `compgen -e | grep -iE 'wordpress|mysql|maria|host'` first.
 
 ## "The site is down"
 

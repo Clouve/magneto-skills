@@ -37,7 +37,7 @@ Use this whenever the shell probe fails (the normal case).
 Record what is active now, so you can diff after and so you have the value to restore if activation white-screens:
 
 ```bash
-env | grep -iE 'wordpress|mysql|maria|host'   # discover DB creds/host
+compgen -e | grep -iE 'wordpress|mysql|maria|host'   # names only: the DB variables and the sibling host
 
 MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \

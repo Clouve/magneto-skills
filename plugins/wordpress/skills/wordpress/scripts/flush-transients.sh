@@ -20,7 +20,7 @@
 # reference/caching.md.
 #
 # Env vars read (first match wins; discover with
-#   env | grep -iE 'wordpress|mysql|maria|host'):
+#   compgen -e | grep -iE 'wordpress|mysql|maria|host'):
 #   WORDPRESS_DB_HOST     | MYSQL_HOST      — DB sibling host (may be host:port)
 #   WORDPRESS_DB_USER     | MYSQL_USER      — DB user
 #   WORDPRESS_DB_PASSWORD | MYSQL_PASSWORD  — DB password (never printed)
@@ -74,7 +74,7 @@ missing=()
 [[ -n "${DB_PASSWORD}" ]] || missing+=("WORDPRESS_DB_PASSWORD (or MYSQL_PASSWORD)")
 if (( ${#missing[@]} > 0 )); then
     err "missing env: ${missing[*]}"
-    err "discover the injected names with: env | grep -iE 'wordpress|mysql|maria|host'"
+    err "discover the injected names with: compgen -e | grep -iE 'wordpress|mysql|maria|host'"
     exit 1
 fi
 
@@ -112,7 +112,7 @@ if ! sql "SELECT 1" >/dev/null 2>&1; then
     err "cannot reach MySQL/MariaDB at ${DB_HOST}:${DB_PORT} as ${DB_USER}."
     err "This script is TCP-only and cannot proceed. Check:"
     err "  - is the DB sibling container up? (curl the wordpress sibling; check pod status)"
-    err "  - are the env var names right? env | grep -iE 'wordpress|mysql|maria|host'"
+    err "  - are the env var names right? compgen -e | grep -iE 'wordpress|mysql|maria|host'"
     err "  - Shape B runs MySQL 8 (caching_sha2_password default) — if auth fails"
     err "    only from here, the installed client may lack that auth plugin."
     exit 2

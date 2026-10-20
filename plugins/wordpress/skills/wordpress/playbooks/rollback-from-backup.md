@@ -7,7 +7,7 @@ On today's channels this is almost always a **DB-only rollback**: the dump resto
 ## Preconditions
 
 - [ ] **Backup dump in hand** with its manifest ([reference/backup-restore.md](../reference/backup-restore.md)); you know whether a `wp-content/` archive exists too (today: usually not).
-- [ ] **Env names discovered** (`env | grep -iE 'wordpress|mysql|maria|host'`); examples assume `WORDPRESS_DB_*`, `WORDPRESS_HOST=wordpress`, default `wp_` prefix.
+- [ ] **Env names discovered** (`compgen -e | grep -iE 'wordpress|mysql|maria|host'`); examples assume `WORDPRESS_DB_*`, `WORDPRESS_HOST=wordpress`, default `wp_` prefix.
 - [ ] **Channel inventory done** — SSH probe run; expect TCP + HTTP only on today's images.
 - [ ] **Version fit known**: the dump's `db_version` vs the running code (case matrix in step 4). `zgrep -A2 "option_name.*db_version" backup.sql.gz` or read it after import.
 - [ ] **User ack recorded** — per the gates in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow): print the exact restore command, spell out the data-loss window (backup timestamp → now), and wait for the literal phrase `yes, I understand this is irreversible`.

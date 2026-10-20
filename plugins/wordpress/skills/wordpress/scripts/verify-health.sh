@@ -21,7 +21,7 @@
 # pod does not mean a healthy install (see ../SKILL.md).
 #
 # Env vars read (names vary per deployment — discover with
-# `env | grep -iE 'wordpress|mysql|maria|host'` if defaults don't resolve):
+# `compgen -e | grep -iE 'wordpress|mysql|maria|host'` if defaults don't resolve):
 #   WORDPRESS_HOST           — pod-internal hostname of the WordPress sibling
 #                              (default: wordpress)
 #   WORDPRESS_DB_HOST        — pod-internal hostname of the DB sibling (required)
@@ -53,7 +53,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     usage; exit 0
 fi
 
-: "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST not set — run: env | grep -iE 'wordpress|mysql|maria|host'}"
+: "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST not set — run: compgen -e | grep -iE 'wordpress|mysql|maria|host'}"
 : "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD not set}"
 : "${WORDPRESS_DB_USER:=wordpress}"
 : "${WORDPRESS_DB_NAME:=wordpress}"
@@ -130,7 +130,7 @@ case "${http_code}" in
         check "http_front_page" "FAIL" "500 — see ../playbooks/diagnose-500.md"
         ;;
     000)
-        check "http_front_page" "FAIL" "no response from ${WORDPRESS_HOST}:80 (container down or hostname wrong — discover with: env | grep -iE 'wordpress|host')"
+        check "http_front_page" "FAIL" "no response from ${WORDPRESS_HOST}:80 (container down or hostname wrong — discover with: compgen -e | grep -iE 'wordpress|host')"
         ;;
     *)
         check "http_front_page" "FAIL" "${http_code}"

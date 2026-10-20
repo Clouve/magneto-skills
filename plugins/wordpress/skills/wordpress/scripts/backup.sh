@@ -27,7 +27,7 @@
 #     all this script needs.
 #
 # Env vars read (injected by the platform's sidecar env fetcher; names vary
-# per deployment — discover with `env | grep -iE 'wordpress|mysql|maria|host'`
+# per deployment — discover with `compgen -e | grep -iE 'wordpress|mysql|maria|host'`
 # if the defaults below don't resolve):
 #   WORDPRESS_DB_HOST        — pod-internal hostname of the DB sibling (required)
 #   WORDPRESS_DB_PASSWORD    — DB password (required; never printed)
@@ -75,8 +75,8 @@ fi
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 err() { printf '[%s] ERROR: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
-: "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST not set — run: env | grep -iE 'wordpress|mysql|maria|host' to discover the injected names}"
-: "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD not set — discover with: env | grep -iE 'wordpress|mysql|maria'}"
+: "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST not set — run: compgen -e | grep -iE 'wordpress|mysql|maria|host' to discover the injected names}"
+: "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD not set — discover with: compgen -e | grep -iE 'wordpress|mysql|maria'}"
 : "${WORDPRESS_DB_USER:=wordpress}"
 : "${WORDPRESS_DB_NAME:=wordpress}"
 : "${WORDPRESS_TABLE_PREFIX:=wp_}"

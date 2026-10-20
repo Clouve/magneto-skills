@@ -6,7 +6,7 @@ The core-upgrade safety gate applies throughout ([SKILL.md → Safety gates](../
 
 ## Preconditions
 
-- [ ] **Env names discovered**: `env | grep -iE 'wordpress|mysql|maria|host'`. Examples below assume the `WORDPRESS_DB_*` set, sibling host `WORDPRESS_HOST=wordpress`, and the default `wp_` prefix (confirm: `SHOW TABLES LIKE '%options';`).
+- [ ] **Env names discovered**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`. Examples below assume the `WORDPRESS_DB_*` set, sibling host `WORDPRESS_HOST=wordpress`, and the default `wp_` prefix (confirm: `SHOW TABLES LIKE '%options';`).
 - [ ] **Channel inventory done** ([reference/shell-access.md](../reference/shell-access.md)). Probe SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — on today's WordPress images expect **failure**; plan on TCP + HTTP only.
 - [ ] **Shape identified** ([reference/stack-and-runtime.md](../reference/stack-and-runtime.md)). Quick check: `WORDPRESS_SITE_URL`/`WORDPRESS_ADMIN_*` in env + MariaDB from `SELECT VERSION();` ⇒ Shape A (Clouve-packaged); vanilla env + MySQL 8 ⇒ Shape B (developer compose).
 - [ ] **Backup taken now** — and the user has explicitly acknowledged its scope: on today's channels it is **DB-only** ([reference/backup-restore.md](../reference/backup-restore.md) — what that does and does not protect). Do not proceed on a stale or unacknowledged backup.
