@@ -101,6 +101,6 @@ sshpass -e ssh clouve-ops@${MOODLE_DB_HOST} 'sudo -u postgres psql -c "SELECT ve
 ## What you do NOT do over SSH
 
 - Edit `<dirroot>/config.php` by hand. Use the env-var-driven path: change the env in the pod definition, restart the pod. The image's entrypoint regenerates `config.php` from env on boot. (See [reference/configuration.md](configuration.md).)
-- Install plugins by `git clone`-ing into `<dirroot>/local/`. Plugins are part of the *image*. Hand-installed plugins disappear on the next pod restart. Surface this as a feature request to Clouve ops.
-- Modify the Moodle codebase under `<dirroot>` for any reason. Same rule.
+- Install plugins by `git clone`-ing into `<dirroot>/local/`. Use [playbooks/install-plugin.md](../playbooks/install-plugin.md) instead: it vets the plugin and takes a backup first. Plugins on the code volume survive pod restarts, and the image's upgrade carries them over to a newer Moodle.
+- Modify Moodle's own code under `<dirroot>`. The next image upgrade replaces it with a clean copy, so the edit is lost, and a broken core file can take the site down until then.
 - Stop or restart MariaDB / Postgres. Even with sudo, this is a tenant-impacting action — gate it and prefer to escalate to Clouve ops.

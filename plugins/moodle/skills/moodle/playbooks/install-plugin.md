@@ -6,19 +6,20 @@ Use this playbook whenever the user wants to add a Moodle plugin (a `mod_*`, `bl
 
 A plugin runs arbitrary PHP inside the Moodle container with full DB access and `<dataroot>` write access. **Treat this like installing a server-side service**, not a UI customization.
 
-In the Magneto-shipped Moodle pod, plugins installed at runtime live under `<dirroot>/local/`, `<dirroot>/mod/`, etc. — but **the codebase is part of the image**. Hand-installed plugins are wiped on the next pod restart unless they were baked into the image. So unless the user owns the image build:
+In the Magneto-shipped Moodle pod, plugins installed at runtime live under `<dirroot>/public/local/`, `<dirroot>/public/mod/`, etc. on the persistent code volume (`/var/www/html`), so they survive pod restarts. When a new image brings a newer Moodle, the image's upgrade replaces the code tree and copies the plugins that admins added back into it. It holds a plugin back, and saves it in `/var/www/html/clouve/upgrade-stash/<UTC time>/` with the reason in the container log, when:
 
-- A "let me try this plugin" experiment may work for the rest of the pod's lifetime, but disappears on restart.
-- A "production install" requires a Clouve image rebuild — surface this as a feature request to Clouve ops, not a runtime change.
+- the new Moodle ships that plugin itself;
+- its `version.php` says it won't work with the new Moodle (an incompatible branch, or a dependency the new Moodle lacks);
+- Moodle's upgrade fails twice with the added plugins in place. All of them are then held back, and the upgrade runs once more without them. "Putting back a held-back plugin" below says how to restore one.
 
-This playbook covers both: the experimental install (acknowledged ephemeral) and the workflow for getting a plugin into the next image.
+This playbook covers the install on this site, and the request to Clouve ops for a plugin that every site should get from the image.
 
 ## Preconditions
 
 - [ ] Backup taken (see [scripts/backup.sh](../scripts/backup.sh)). A bad plugin's `db/install.xml` can leave the DB schema partially extended — restoring is your safety net.
 - [ ] User has named **the exact plugin** by its frankenstyle (e.g. `mod_bigbluebuttonbn`, `local_clouve`, `auth_oidc`) AND a download source (URL of release zip, Git repo + tag, or moodle.org plugin ID).
 - [ ] User has confirmed the source is trusted (see "Vetting an untrusted plugin" below).
-- [ ] User understands the change is ephemeral if not baked into the image, OR has agreed to the rebuild path.
+- [ ] User understands the plugin is for this site only. A plugin that every site should have goes into the image through Clouve ops (see the last section).
 
 ## Vetting an untrusted plugin
 
@@ -52,7 +53,7 @@ Before unzipping anything into `<dirroot>`:
 
 If any of the above raise concerns, surface them to the user and ask them to choose a different plugin.
 
-## Steps — experimental install (ephemeral)
+## Steps: install on this site
 
 ### 1. Maintenance mode on
 
@@ -127,16 +128,17 @@ If any of these fail, the plugin install is broken. Restore from backup (step 2)
 ### 7. Persistence reminder
 
 ```
-This plugin is installed for the lifetime of the current pod only. On the
-next pod restart it will be wiped (the codebase comes from the image).
-For a permanent install, the plugin must be added to the Moodle Docker
-image — open a ticket with Clouve ops with:
-  - the plugin frankenstyle and version
-  - the source URL
-  - confirmation that you accept the security implications
+This plugin is installed on this site's code volume, so it survives pod
+restarts. When a new image brings a newer Moodle, the upgrade carries it
+over to the new code. It is held back instead, and saved in
+/var/www/html/clouve/upgrade-stash/<UTC time>/, if the new Moodle ships
+it itself, if its version.php says it won't work with the new Moodle, or
+if Moodle's upgrade fails twice with it in place. The container log says
+why.
+To have it on every site, Clouve ops can add it to the Moodle image.
 ```
 
-## Steps — image install (permanent, via Clouve ops)
+## Steps: add a plugin to the image for every site (via Clouve ops)
 
 This is not a runtime workflow. Surface to Clouve ops with:
 
@@ -144,7 +146,24 @@ This is not a runtime workflow. Surface to Clouve ops with:
 - The vetting findings from "Vetting an untrusted plugin" above.
 - Any version-pinning preferences (specific tag, head of branch, etc.).
 
-The image rebuild adds a `RUN` step in [apps/moodle/image/Dockerfile](../../../../apps/moodle/image/Dockerfile) that fetches and unpacks the plugin into `<dirroot>/public/<type>/<name>/`. On the next deploy, every tenant pod gets the plugin installed automatically (via `admin/cli/upgrade.php` running on first boot).
+The image rebuild adds a `RUN` step in [apps/moodle/image/Dockerfile](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/Dockerfile) that fetches and unpacks the plugin into `<dirroot>/public/<type>/<name>/`. On the next deploy, every tenant pod gets the plugin installed automatically (via `admin/cli/upgrade.php` running on first boot).
+
+## Putting back a held-back plugin
+
+The image's upgrade logs each held-back plugin with its reason and its folder in the stash, for example `/var/www/html/clouve/upgrade-stash/20261022-152200-15/public/local/foo`. The folder is the plugin as it was before the upgrade. Deal with the reason first: for a plugin marked incompatible, get a release that supports this Moodle (vet it as above); a plugin that the new Moodle ships itself needs nothing.
+
+1. Take the backup (step 2 of the install).
+2. Copy the folder to its place in the current code. From Moodle 5.1 on, plugin folders are under `public/` (see step 3 of the install for each type):
+   ```bash
+   sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+       'sudo cp -a /var/www/html/clouve/upgrade-stash/<run>/public/local/<name> /var/www/html/public/local/<name> && \
+        sudo chown -R www-data:www-data /var/www/html/public/local/<name>'
+   ```
+3. Run the upgrade as in step 4 of the install, or open Site administration > Notifications.
+4. Purge caches as in step 5 of the install. Moodle caches the plugin as missing, and an upgrade with nothing to install doesn't purge, so without this the plugin's pages can answer 404.
+5. Verify as in step 6. When it works, the stash copy can go.
+
+If the upgrade or the plugin's pages fail, take the plugin out again: remove the folder you copied (`sudo rm -rf /var/www/html/public/<type>/<name>`), purge caches, and keep the stash copy. The backup from step 1 covers the database and moodledata, not the code, so restoring it alone leaves the plugin in place.
 
 ## Uninstalling
 
