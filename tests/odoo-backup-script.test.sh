@@ -5,7 +5,7 @@
 # The assistant doesn't install backup.sh anywhere. It pipes the file from the
 # skill's own folder into the Odoo container over the clouve-ops channel:
 #
-#   SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+#   SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
 #     "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 #
 # so the script runs inside the Odoo container, as root, with none of the

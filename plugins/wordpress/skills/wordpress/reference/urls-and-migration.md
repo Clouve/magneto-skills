@@ -7,7 +7,7 @@ Two rows in `wp_options` own the canonical site URL. Everything else that looks 
 **[TCP-mysql]** Read the two authoritative options:
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
   -e "SELECT option_name, option_value FROM wp_options WHERE option_name IN ('siteurl','home');"
 ```
 
@@ -95,7 +95,7 @@ The loop: `siteurl`/`home` are `https://…`, a request arrives, WordPress sees 
 
 The official `wordpress` Docker image's generated `wp-config.php` has shipped an `X-Forwarded-Proto` shim for some time (sets `$_SERVER['HTTPS'] = 'on'` when the header says https), and both shapes derive their `wp-config.php` from that generator — so the shim is *probably* present, but confirming it in the file needs a channel you likely don't have. Test behavior instead:
 
-**[HTTP]** differential probe from the agent (set `WORDPRESS_HOST` to the WordPress sibling's hostname — discover via `compgen -e | grep -iE 'wordpress|mysql|maria|host'`):
+**[HTTP]** differential probe from the agent (set `WORDPRESS_HOST` to the WordPress sibling's hostname, which you discover via `compgen -e | grep -iE 'wordpress|mysql|maria|host'`; the passwords' names are in `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`):
 
 ```bash
 curl -sI "http://${WORDPRESS_HOST}/" | grep -iE '^(HTTP|Location)'

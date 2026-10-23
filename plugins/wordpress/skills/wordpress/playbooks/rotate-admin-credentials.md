@@ -24,8 +24,9 @@ This doubles as the gate's identity check and as the "one row, then act" confirm
 
 ```bash
 compgen -e | grep -iE 'wordpress|mysql|maria|host'   # names only: the DB variables and the sibling host
+clv-secret --list | grep -iE 'wordpress|mysql|maria|host'   # the passwords' names
 
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -e \
   "SELECT ID, user_login, user_email, user_registered, LEFT(user_pass,4) AS hash_prefix
    FROM wp_users WHERE user_login = '<the-login>' OR user_email = '<the-email>';"
@@ -42,7 +43,7 @@ Only if the `clouve-ops` probe from [../reference/shell-access.md](../reference/
 ```bash
 NEWPASS=$(openssl rand -hex 16)   # hex is quote-safe and stays out of shell history
 [[ -n "$NEWPASS" ]] || { echo "no password captured — aborting, nothing written"; exit 1; }
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
   -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
   "wp --path=/var/www/html user update '<the-login>' --user_pass=\"$NEWPASS\" --allow-root"
 ```
@@ -60,7 +61,7 @@ This is the live path when there is no shell. WordPress recognizes a bare 32-hex
 ```bash
 NEWPASS=$(openssl rand -hex 16)   # hex contains no quotes, so it is safe inside the SQL literal
 [[ -n "$NEWPASS" ]] || { echo "no password captured — aborting, nothing written"; exit 1; }
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" <<SQL
 UPDATE wp_users SET user_pass = MD5('${NEWPASS}')
 WHERE user_login = '<the-login>';
@@ -80,7 +81,7 @@ Notes and honest caveats:
 **Confirm the write landed** (the hash prefix reflects what you wrote — 32 hex, no prefix, until first login):
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT user_login, LEFT(user_pass,4) FROM wp_users WHERE user_login='<the-login>';"
 ```

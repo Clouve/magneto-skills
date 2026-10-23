@@ -108,7 +108,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} 'ls -la /tmp/rollover-mbz/ | wc -l'
 ### 7. Restore each into the new category as a new course
 
 ```bash
-NEXT_CAT_ID=$(mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -sN \
+NEXT_CAT_ID=$(mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -sN \
     -e "SELECT id FROM mdl_course_categories WHERE name = 'Term 2026-Q1';")
 
 for mbz in /tmp/rollover-mbz/*.mbz; do

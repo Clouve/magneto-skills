@@ -19,7 +19,7 @@ You run these commands in this container (the Magneto Agent) and reach Odoo over
 ### 1. Preferred: pipe the skill's `scripts/backup.sh` into the Odoo container
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
   "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
@@ -33,14 +33,14 @@ If you can't use the script, run the dump yourself. Pass the config as `ODOO_RC`
 
 ```bash
 # ZIP format (default) — includes dump.sql + filestore/ + manifest.json:
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump <db> /tmp/<db>-$(date +%Y%m%d-%H%M%S).zip"
 ```
 
 A failed dump still leaves an empty file at that path. Check that the artifact is there and not zero bytes:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "ls -lh /tmp/<db>-*.zip"
 ```
 
@@ -70,11 +70,11 @@ The database's superuser role is `${ODOO_DB_USER}` (`odoo`). There is no `postgr
 
 ```bash
 # Step 1: dump the database (via SSH to the Postgres container):
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_DB_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_DB_HOST} \
   "sudo -u postgres pg_dump -U ${ODOO_DB_USER} --no-owner -Fc <db> > /tmp/<db>-$(date +%Y%m%d).dump"
 
 # Step 2: tar the filestore (via SSH to the Odoo container):
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo tar -C /var/lib/odoo/filestore -czf /tmp/filestore-<db>-$(date +%Y%m%d).tar.gz <db>"
 ```
 
@@ -86,7 +86,7 @@ There is no `kubectl` in this container, and `scp` can't read `/var/lib/odoo`: t
 
 ```bash
 mkdir -p "$HOME/backups"
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo cat /var/lib/odoo/backups/<db>-<timestamp>.zip" > "$HOME/backups/<db>-<timestamp>.zip"
 ```
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Clouve's [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). Each plugin is a single, self-contained Anthropic-style skill bundle. There is no build, no test suite, no lint — the deliverables are a `marketplace.json` catalog, per-plugin `plugin.json` manifests, and `SKILL.md` payloads with their supporting files.
+Clouve's [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). Each plugin is a single, self-contained Anthropic-style skill bundle. There is no build and no lint, and the only tests are the bash scripts in `tests/` and gibbon's `plugins/gibbon/skills/gibbon/scripts/tests/mysql-tls.test.sh`. The deliverables are a `marketplace.json` catalog, per-plugin `plugin.json` manifests, and `SKILL.md` payloads with their supporting files.
 
 This repo was **split out of `Clouve/magneto`**, and the runtime container that consumes these skills (the **[Magneto Agent](https://github.com/Clouve/magneto-agent)**, formerly known as "AI Studio") was subsequently split out into its own repo too. Old links of the form `../../image/...` or `apps/ai-studio/image/installer/...` are cross-repo references — the agent's image source resolves in [Clouve/magneto-agent](https://github.com/Clouve/magneto-agent). Note: `apps/ai-studio/` in [Clouve/magneto](https://github.com/Clouve/magneto) is now a **different thing** — an Ubuntu sibling workspace, pre-seeded with a running MERN starter and supervised by supervisord, that pairs with the Magneto Agent at deploy time (one of several sibling apps, alongside `apps/moodle/`, `apps/gibbon/`, etc.). Don't conflate the two; the name overlap is historical.
 
@@ -46,6 +46,60 @@ Contract:
 The hook is the right home for runtime deps that are tied to *this skill's scripts and playbooks*. It is **not** a place for content edits to the skill itself, image rebuild logic, or anything that should live in the upstream Magneto Agent image. Generic Magneto Agent enhancements belong in [Clouve/magneto-agent](https://github.com/Clouve/magneto-agent) (the standalone image source); each sibling app's image source (Dockerfile, installer scripts, persona) lives under its own directory in [Clouve/magneto](https://github.com/Clouve/magneto) — for example, the AI Studio sibling at `apps/ai-studio/`.
 
 The full hook contract lives in the plugin-stager source at [image/installer/chat/marketplace/plugin-stager.sh](https://github.com/Clouve/magneto-agent/blob/main/image/installer/chat/marketplace/plugin-stager.sh).
+
+## Secrets contract
+
+### Where the secrets are
+
+On a current Magneto Agent, deployment secrets are not environment variables. The agent keeps them in `/run/clouve/secrets.env` (root, mode 0600, rebuilt at every start), and `/usr/local/bin/clv-secret` reads that file for the assistant. `clv-secret` has three forms:
+
+```sh
+clv-secret NAME         # prints the value, with no newline
+clv-secret --list       # prints the names, one per line, never a value
+clv-secret --has NAME   # prints nothing; exits 0 if NAME is there, 1 if not
+```
+
+While the agent is still fetching its apps' settings, `--list` and a lookup of a missing name wait, and say so on stderr ("clv-secret: waiting for the agent to finish connecting to its apps..."). A name still missing after the fetch exits 2 with "clv-secret: NAME is not set on this server". Skills never run `clv-secret NAME` on its own, never print a value, and never open the file.
+
+An older agent has the secrets in its environment and no `clv-secret`. Skills reach every agent from git at its start, so each use of a secret has to work on both kinds.
+
+### In markdown
+
+An agent-side secret in a command is written `${NAME:-$(clv-secret NAME)}`:
+
+```sh
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}
+```
+
+Both halves are needed. An older agent has `NAME`, so bash never runs the `clv-secret` half. A current agent doesn't have it, so bash does. Without the second half the command gets an empty password on a current agent, and without the first it fails on an older one. Where the text only names a variable and isn't a command, write the bare name in backticks: `CLOUVE_OPS_PASSWORD`.
+
+### In scripts
+
+A script that uses an agent-side secret loads it once, on a line of its own above its first other use:
+
+```sh
+: "${NAME:=$(clv-secret NAME)}"
+```
+
+The `:` keeps it safe under `set -e`. A plain `NAME=$(clv-secret NAME)` ends the script when `clv-secret` exits non-zero, and this line doesn't. `:=` only assigns when `NAME` is unset or empty, so an older agent that has `NAME` never runs `clv-secret`. The line has no `2>/dev/null`, because `clv-secret`'s own messages (the wait, "not set on this server", a sudo failure) have to reach whoever ran the script. A script that runs on the sibling, piped over SSH, reads the sibling's own variables and gets no loader line.
+
+### Which names
+
+A name is a secret when one of its `_`-separated words is PASSWORD, PASSWORDS, PASSWD, PASS, PWD, SECRET, SECRETS, KEY, KEYS, TOKEN, TOKENS, CREDENTIAL, CREDENTIALS, PRIVATE or AUTH. `MAGNETO_AGENT_LLM_KEY`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are the exceptions. The agent-side ones start with `CLOUVE_OPS_`, `GIBBON_`, `MOODLE_`, `ODOO_`, `WORDPRESS_` or `AI_STUDIO_`. A name without one of those prefixes (`DB_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `MYSQL_PWD`) is a sibling's own, or a script's local copy, and stays as written.
+
+The SKILL.md of a plugin that uses secrets says in its environment section that passwords aren't in the environment, shows the form above, and names `clv-secret --list`. A step that lists names with `compgen -e | grep` gets a `clv-secret --list | grep` line for the passwords.
+
+### The test
+
+`tests/skills-env-values.test.sh` enforces these rules for the skills. It fails on:
+
+- `printenv` of a secret name;
+- a `$NAME` or `${NAME...}` of an agent-side secret, in markdown or a script comment, that isn't exactly the markdown form;
+- a script that uses an agent-side secret above its loader line, or whose loader line differs from the script form;
+- a line that calls an agent-side secret "already in your" environment, and a script line that sends the reader to `compgen` for one;
+- a SKILL.md that never says `clv-secret --list`, in a plugin that uses `clv-secret`, and a `learnings.md` without the "Secrets. Ever." line.
+
+It also runs both forms against a stand-in agent with `clv-secret` and one without it, with the variable set and not set. Run it with `bash tests/skills-env-values.test.sh`, and keep its name rule in step with `_clv_is_secret_name` in magneto-agent's [secrets-lib.sh](https://github.com/Clouve/magneto-agent/blob/main/image/installer/secrets/secrets-lib.sh).
 
 ## SKILL.md frontmatter
 

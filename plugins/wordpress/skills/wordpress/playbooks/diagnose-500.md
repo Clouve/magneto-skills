@@ -6,7 +6,7 @@ Use this playbook when the user reports the WordPress site is erroring — an HT
 
 ## Preconditions
 
-- [ ] Discovered env: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` — you have `${WORDPRESS_HOST}` and the `${WORDPRESS_DB_*}` set.
+- [ ] Discovered env: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and the passwords' names with `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`. You have `${WORDPRESS_HOST}` and the `${WORDPRESS_DB_*}` set.
 - [ ] Confirmed the table prefix: `SHOW TABLES LIKE '%options'` (commands below assume `wp_`).
 - [ ] Know your shape (Clouve-packaged vs developer compose — [reference/stack-and-runtime.md](../reference/stack-and-runtime.md)); two steps below branch on it.
 
@@ -71,7 +71,7 @@ Read the pattern:
 ## Step 3: DB-side evidence **[TCP-mysql]**
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "SELECT 1"
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "SELECT 1"
 ```
 
 If that fails, Step 5. If it works, gather the read-only picture:

@@ -16,11 +16,11 @@ Use this playbook whenever the tenant asks to upgrade Gibbon to a newer version,
 ```bash
 # Record current versions.
 echo "Code version: $(curl -sf http://gibbon/version.php 2>/dev/null | grep -oP "version = '\K[^']+" || echo 'unknown-no-cli-access')"
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
   "SELECT CONCAT('DB version: ', value) FROM gibbonSetting WHERE scope='System' AND name='version';"
 
 # Record row counts for the tables we care about post-upgrade.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT 'gibbonPerson' AS t, COUNT(*) FROM gibbonPerson
   UNION ALL SELECT 'gibbonStudentEnrolment', COUNT(*) FROM gibbonStudentEnrolment
   UNION ALL SELECT 'gibbonMarkbookEntry', COUNT(*) FROM gibbonMarkbookEntry
@@ -64,12 +64,12 @@ Do not attempt to automate the form login — we don't have the tenant's admin c
 
 ```bash
 # 1. Versions match.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
   "SELECT value FROM gibbonSetting WHERE scope='System' AND name='version';"
 # This should equal the new GIBBON_VERSION.
 
 # 2. Row counts match. Compare to the pre-upgrade numbers.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT 'gibbonPerson' AS t, COUNT(*) FROM gibbonPerson
   UNION ALL SELECT 'gibbonStudentEnrolment', COUNT(*) FROM gibbonStudentEnrolment
   UNION ALL SELECT 'gibbonMarkbookEntry', COUNT(*) FROM gibbonMarkbookEntry

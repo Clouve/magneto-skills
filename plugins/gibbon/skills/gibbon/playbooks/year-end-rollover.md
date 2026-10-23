@@ -14,7 +14,7 @@ Gibbon's highest-risk routine operation. Read [reference/academic-year-rollover.
 
 ```bash
 # The current school year
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT gibbonSchoolYearID, name, status, firstDay, lastDay, sequenceNumber
   FROM gibbonSchoolYear
   ORDER BY sequenceNumber;"
@@ -23,7 +23,7 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
 # If not, fix in School Admin → Manage School Years BEFORE rollover.
 
 # Current student count (will drive max_input_vars need)
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT COUNT(*) AS active_students
   FROM gibbonStudentEnrolment e
   JOIN gibbonSchoolYear y ON e.gibbonSchoolYearID = y.gibbonSchoolYearID
@@ -48,7 +48,7 @@ If the student count × 3 > max_input_vars, bump `max_input_vars` before rollove
 ## Capture the pre-rollover snapshot
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT 'active_persons' AS metric, COUNT(*) AS val FROM gibbonPerson WHERE status='Full'
   UNION ALL SELECT 'current_enrolments',
     (SELECT COUNT(*) FROM gibbonStudentEnrolment e
@@ -85,7 +85,7 @@ The submission is a single big POST. Gibbon iterates each student, INSERTs the n
 ## Post-rollover verification (immediately after)
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   -- Years flipped correctly:
   SELECT name, status, firstDay, lastDay FROM gibbonSchoolYear ORDER BY sequenceNumber;
   -- New year's enrolments roughly match pre-rollover active student count:
@@ -112,7 +112,7 @@ Symptoms: new year enrolments < expected, year already flipped, students without
 1. **Stop.** Do not re-run rollover.
 2. **Capture state:**
    ```bash
-   MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+   MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
      SELECT status, COUNT(*) FROM gibbonSchoolYear GROUP BY status;
      SELECT gibbonSchoolYearID, COUNT(*) FROM gibbonStudentEnrolment GROUP BY gibbonSchoolYearID;"
    ```

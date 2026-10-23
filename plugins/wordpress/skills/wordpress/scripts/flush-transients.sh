@@ -20,7 +20,8 @@
 # reference/caching.md.
 #
 # Env vars read (first match wins; discover with
-#   compgen -e | grep -iE 'wordpress|mysql|maria|host'):
+#   compgen -e | grep -iE 'wordpress|mysql|maria|host'
+# and the passwords' names with clv-secret --list):
 #   WORDPRESS_DB_HOST     | MYSQL_HOST      — DB sibling host (may be host:port)
 #   WORDPRESS_DB_USER     | MYSQL_USER      — DB user
 #   WORDPRESS_DB_PASSWORD | MYSQL_PASSWORD  — DB password (never printed)
@@ -36,6 +37,8 @@
 # See: reference/caching.md (transient mechanics), SKILL.md (safety gates).
 
 set -uo pipefail
+
+: "${WORDPRESS_DB_PASSWORD:=$(clv-secret WORDPRESS_DB_PASSWORD)}"
 
 usage() {
     cat <<EOF
@@ -74,7 +77,7 @@ missing=()
 [[ -n "${DB_PASSWORD}" ]] || missing+=("WORDPRESS_DB_PASSWORD (or MYSQL_PASSWORD)")
 if (( ${#missing[@]} > 0 )); then
     err "missing env: ${missing[*]}"
-    err "discover the injected names with: compgen -e | grep -iE 'wordpress|mysql|maria|host'"
+    err "discover the injected names with: compgen -e | grep -iE 'wordpress|mysql|maria|host' (passwords: clv-secret --list)"
     exit 1
 fi
 
@@ -107,12 +110,12 @@ sql() {
         -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" "${DB_NAME}" -e "$1"
 }
 
-log "Connecting to ${DB_NAME}@${DB_HOST}:${DB_PORT} as ${DB_USER} (password from env, not shown)"
+log "Connecting to ${DB_NAME}@${DB_HOST}:${DB_PORT} as ${DB_USER} (password not shown)"
 if ! sql "SELECT 1" >/dev/null 2>&1; then
     err "cannot reach MySQL/MariaDB at ${DB_HOST}:${DB_PORT} as ${DB_USER}."
     err "This script is TCP-only and cannot proceed. Check:"
     err "  - is the DB sibling container up? (curl the wordpress sibling; check pod status)"
-    err "  - are the env var names right? compgen -e | grep -iE 'wordpress|mysql|maria|host'"
+    err "  - are the env var names right? compgen -e | grep -iE 'wordpress|mysql|maria|host' (passwords: clv-secret --list)"
     err "  - Shape B runs MySQL 8 (caching_sha2_password default) — if auth fails"
     err "    only from here, the installed client may lack that auth plugin."
     exit 2

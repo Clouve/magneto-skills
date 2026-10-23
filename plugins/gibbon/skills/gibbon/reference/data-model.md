@@ -135,16 +135,16 @@ From the Magneto Agent container, against the app's pod-internal MySQL:
 
 ```bash
 # Read-only probe, safe to run
-mysql -h "$GIBBON_DB_HOST" -u gibbon -p"$GIBBON_DB_PASSWORD" gibbon -e \
+mysql -h "$GIBBON_DB_HOST" -u gibbon -p"${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" gibbon -e \
   "SELECT COUNT(*) FROM gibbonPerson WHERE status='Full';"
 
 # Inspect the currently-active school year
-mysql -h "$GIBBON_DB_HOST" -u gibbon -p"$GIBBON_DB_PASSWORD" gibbon -e \
+mysql -h "$GIBBON_DB_HOST" -u gibbon -p"${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" gibbon -e \
   "SELECT gibbonSchoolYearID, name, status, firstDay, lastDay FROM gibbonSchoolYear ORDER BY sequenceNumber;"
 
 # See what a given setting is
-mysql -h "$GIBBON_DB_HOST" -u gibbon -p"$GIBBON_DB_PASSWORD" gibbon -e \
+mysql -h "$GIBBON_DB_HOST" -u gibbon -p"${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" gibbon -e \
   "SELECT scope,name,value FROM gibbonSetting WHERE scope='System' ORDER BY name;"
 ```
 
-Never paste `$GIBBON_DB_PASSWORD` into chat. Pass it via env or `MYSQL_PWD` (preferred), and redact it in any diagnostics output you surface to the user.
+Never paste `GIBBON_DB_PASSWORD` into chat. Pass it via env or `MYSQL_PWD` (preferred), and redact it in any diagnostics output you surface to the user.

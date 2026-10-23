@@ -12,7 +12,8 @@ Everything branches on this. Confirm which shape you are on and whether a shell 
 
 ```bash
 compgen -e | grep -iE 'wordpress|mysql|maria|host'                       # names only: the sibling host and DB variables
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+clv-secret --list | grep -iE 'wordpress|mysql|maria|host'                # the passwords' names
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
   clouve-ops@"${WORDPRESS_HOST}" true && echo "shell: yes" || echo "shell: no (expected today)"
 ```
 
@@ -24,7 +25,7 @@ If the shell probe fails (the normal case today), treat every file-channel item 
 ## 1. Confirm the site is reached over HTTPS — [TCP-mysql] + [HTTP]
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT option_name, option_value FROM wp_options
    WHERE option_name IN ('siteurl','home');"
@@ -58,7 +59,7 @@ If it is live and the site does not need XML-RPC (no legacy mobile app, no Jetpa
 ## 4. Check the admin username and password strength — [TCP-mysql] detect
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT u.ID, u.user_login FROM wp_users u
    JOIN wp_usermeta m ON m.user_id = u.ID

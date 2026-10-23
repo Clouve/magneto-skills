@@ -37,7 +37,7 @@ out=/tmp/forensic-$ts
 mkdir -p "$out"
 
 # DB dump of the broken state
-mysqldump -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" \
+mysqldump -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" \
     --single-transaction --quick --lock-tables=false --default-character-set=utf8mb4 \
     "$MOODLE_DB_NAME" | gzip > "$out/db-broken.sql.gz"
 
@@ -58,7 +58,7 @@ This depends on the engine and the dump format.
 
 ```bash
 # 4a. Drop existing tables (preserves the schema/database — Moodle owns the schema, not the DB).
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -e "
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -e "
 SET FOREIGN_KEY_CHECKS = 0;
 SET @tables = NULL;
 SELECT GROUP_CONCAT('\`', table_name, '\`') INTO @tables
@@ -68,7 +68,7 @@ PREPARE s FROM @tables; EXECUTE s; DEALLOCATE PREPARE s;
 SET FOREIGN_KEY_CHECKS = 1;"
 
 # 4b. Restore from dump.
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" < /path/to/backup.sql
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" < /path/to/backup.sql
 ```
 
 Verify: `SELECT value FROM mdl_config WHERE name='version';` should match the backup's version.
@@ -77,11 +77,11 @@ Verify: `SELECT value FROM mdl_config WHERE name='version';` should match the ba
 
 ```bash
 # 4a. Drop and recreate the schema in one shot:
-PGPASSWORD="$MOODLE_DB_PASSWORD" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -d "$MOODLE_DB_NAME" \
+PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -d "$MOODLE_DB_NAME" \
     -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 # 4b. Restore:
-PGPASSWORD="$MOODLE_DB_PASSWORD" pg_restore \
+PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" pg_restore \
     -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -d "$MOODLE_DB_NAME" \
     --no-owner --no-privileges \
     /path/to/backup.dump

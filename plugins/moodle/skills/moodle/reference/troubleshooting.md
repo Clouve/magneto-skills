@@ -20,9 +20,9 @@ Order of likelihood:
 
 3. **DB up?**
    ```bash
-   PGPASSWORD="$MOODLE_DB_PASSWORD" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -c "SELECT 1"
+   PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -c "SELECT 1"
    # or
-   mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" -e "SELECT 1"
+   mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" -e "SELECT 1"
    ```
 
 4. **`<dataroot>` writable?** `sudo -u www-data touch <dataroot>/.test && rm <dataroot>/.test`. Common after a volume remount or chown gone wrong.
@@ -73,7 +73,7 @@ If that's old:
 
 1. **Is cron disabled?** `mdl_config WHERE name='cron_enabled'` (1 = on).
 2. **Is the cron process actually running on the host?**
-   - SSH to the moodle container: `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${MOODLE_HOST}`
+   - SSH to the moodle container: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}`
    - `ps aux | grep cron.php`
    - `cat /etc/cron.d/moodle` or check k8s `CronJob`.
 3. **Is the cron process running but stuck?**

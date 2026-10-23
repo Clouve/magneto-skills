@@ -6,8 +6,8 @@ The core-upgrade safety gate applies throughout ([SKILL.md → Safety gates](../
 
 ## Preconditions
 
-- [ ] **Env names discovered**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`. Examples below assume the `WORDPRESS_DB_*` set, sibling host `WORDPRESS_HOST=wordpress`, and the default `wp_` prefix (confirm: `SHOW TABLES LIKE '%options';`).
-- [ ] **Channel inventory done** ([reference/shell-access.md](../reference/shell-access.md)). Probe SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — on today's WordPress images expect **failure**; plan on TCP + HTTP only.
+- [ ] **Env names discovered**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and the passwords' names with `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`. Examples below assume the `WORDPRESS_DB_*` set, sibling host `WORDPRESS_HOST=wordpress`, and the default `wp_` prefix (confirm: `SHOW TABLES LIKE '%options';`).
+- [ ] **Channel inventory done** ([reference/shell-access.md](../reference/shell-access.md)). Probe SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — on today's WordPress images expect **failure**; plan on TCP + HTTP only.
 - [ ] **Shape identified** ([reference/stack-and-runtime.md](../reference/stack-and-runtime.md)). Quick check: `WORDPRESS_SITE_URL`/`WORDPRESS_ADMIN_*` in env + MariaDB from `SELECT VERSION();` ⇒ Shape A (Clouve-packaged); vanilla env + MySQL 8 ⇒ Shape B (developer compose).
 - [ ] **Backup taken now** — and the user has explicitly acknowledged its scope: on today's channels it is **DB-only** ([reference/backup-restore.md](../reference/backup-restore.md) — what that does and does not protect). Do not proceed on a stale or unacknowledged backup.
 - [ ] **Release notes read** — the target release's announcement on wordpress.org/news and its page under wordpress.org/documentation. Note new PHP/DB floors; compare against this stack ([reference/stack-and-runtime.md](../reference/stack-and-runtime.md)).
@@ -21,7 +21,7 @@ The core-upgrade safety gate applies throughout ([SKILL.md → Safety gates](../
 mkdir -p "$HOME/backups"; ts=$(date +%Y%m%d-%H%M%S)
 
 # 1a. DB schema version + identity options:
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "
   SELECT option_name, option_value FROM wp_options
    WHERE option_name IN ('db_version','siteurl','home','template','stylesheet');"
 
@@ -29,7 +29,7 @@ MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_
 curl -sS "http://${WORDPRESS_HOST}/feed/" | grep -o '<generator>[^<]*</generator>'
 
 # 1c. Canary row counts — capture, you'll compare after:
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -e "
   SELECT 'wp_posts' t, COUNT(*) c FROM wp_posts
   UNION ALL SELECT 'wp_users', COUNT(*) FROM wp_users
   UNION ALL SELECT 'wp_comments', COUNT(*) FROM wp_comments
@@ -37,7 +37,7 @@ MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_
   UNION ALL SELECT 'wp_postmeta', COUNT(*) FROM wp_postmeta;" | tee "$HOME/backups/pre-upgrade-canaries-$ts.txt"
 
 # 1d. Save the plugin/theme registration (restore material if isolation is needed later):
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
     -e "SELECT option_value FROM wp_options WHERE option_name='active_plugins';" \
     > "$HOME/backups/active_plugins-$ts.txt"
 ```
@@ -80,7 +80,7 @@ Pick the first channel that exists:
 
 ```bash
 # 5a. Invariant: db_version advanced (or unchanged for a schema-less minor):
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
     -e "SELECT option_value FROM wp_options WHERE option_name='db_version';"
 
 # 5b. Code version shows the target:

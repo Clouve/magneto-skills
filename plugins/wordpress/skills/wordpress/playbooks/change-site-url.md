@@ -6,7 +6,7 @@ Use this playbook when the tenant is moving the site to a new domain (custom dom
 
 Work through this before touching anything:
 
-1. **Which shape?** Probe per [reference/stack-and-runtime.md](../reference/stack-and-runtime.md). Quick signal: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` in the agent — a `WORDPRESS_SITE_URL` in the re-exported sibling env means the Clouve-packaged app (Shape A). Names vary; discover, don't assume.
+1. **Which shape?** Probe per [reference/stack-and-runtime.md](../reference/stack-and-runtime.md). Quick signal: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` in the agent (the passwords' names are in `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`). A `WORDPRESS_SITE_URL` in the re-exported sibling env means the Clouve-packaged app (Shape A). Names vary; discover, don't assume.
 2. **Is the new URL platform-real?** WordPress can only be told which URL it lives at — making that URL actually route to this pod (DNS, ingress, TLS) is platform work the tenant does in the Clouve console. This playbook handles WordPress's side only. If the new URL doesn't serve *anything* yet, stop and have the tenant finish the platform side first.
 3. **Branch:**
 
@@ -23,7 +23,7 @@ Work through this before touching anything:
 - [ ] Current `siteurl`/`home` values recorded **in chat** (they are your rollback data):
       ```bash
       # [TCP-mysql]
-      MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
+      MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
         -e "SELECT option_name, option_value FROM wp_options WHERE option_name IN ('siteurl','home');"
       ```
 - [ ] New URL confirmed reachable at the ingress (tenant loads it in a browser, or you curl it if the agent has egress to the public hostname — if it doesn't resolve from the pod, ask the tenant to check).
@@ -71,7 +71,7 @@ Nothing reconciles URLs on this shape, and a wrong `siteurl` locks everyone out 
 **[TCP-mysql]** The demo-style compose uses the stock `wp_` prefix, but verify rather than assume:
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
   -e "SHOW TABLES LIKE '%options';"
 ```
 
@@ -83,7 +83,7 @@ Use the prefix you see in every statement below. (If the mysql client fails to a
 
 ```bash
 # [TCP-mysql] dry-run equivalent:
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
   -e "SELECT COUNT(*) FROM wp_options WHERE option_name IN ('siteurl','home');"
 # expected: 2
 ```
@@ -107,7 +107,7 @@ Same problem as Path 1 step 3, with one difference worth saying plainly: **the v
 
 ```bash
 # [TCP-mysql] both options are the new URL:
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" \
   -e "SELECT option_name, option_value FROM wp_options WHERE option_name IN ('siteurl','home');"
 
 # [HTTP] no redirect loop at the container (WORDPRESS_HOST = the wordpress sibling's hostname — discover it):

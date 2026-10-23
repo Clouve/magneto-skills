@@ -2,7 +2,7 @@
 name: ai-studio
 description: Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — on the user's behalf — install software, write code, run supervised services, debug, and verify. Use when the user is working with the Clouve AI Studio app, when they ask to 'install', 'set up', 'deploy', 'run', or 'host' something on the server, when they reference paths under /home/clouve-ops, /opt, /usr/local, or long-lived services on the workspace, or when they describe a project they want built and running end-to-end on a Linux server. Do not use for questions about the Magneto Agent chat host itself (terminal, FileBrowser), or for operating other Clouve sibling apps (Moodle, Gibbon, etc.).
 type: devops
-version: 0.2.2
+version: 0.2.3
 authoredAgainst: ubuntu:26.04
 ---
 
@@ -35,10 +35,11 @@ Use this skill when the user is working with the Clouve AI Studio app, when they
 
 - You are inside the **Magneto Agent container** in the app's pod.
 - The AI Studio workspace answers SSH on port `22` at the hostname in `${AI_STUDIO_HOST}`, which the agent sets at start (`tkt-<id>-ai-studio` on Kubernetes, where the bare name `ai-studio` doesn't resolve). Use `${AI_STUDIO_HOST}` rather than hard-coding a name, and confirm the variable's name with `compgen -e | grep -i studio` (names only).
-- You **do** have an interactive shell on the workspace via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env). Connect with:
+- Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
+- You **do** have an interactive shell on the workspace via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`. Connect with:
 
   ```bash
-  SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       clouve-ops@${AI_STUDIO_HOST}
@@ -49,7 +50,7 @@ Use this skill when the user is working with the Clouve AI Studio app, when they
 - For one-shot commands, prefer the inline form rather than an interactive session:
 
   ```bash
-  SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
       -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
       clouve-ops@${AI_STUDIO_HOST} '<command>'
   ```

@@ -21,7 +21,7 @@ Have the tenant check the Clouve platform dashboard or pod-list. Is the `gibbon`
 ## Step 2 — DB reachable?
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysqladmin -h "$GIBBON_DB_HOST" -u gibbon ping
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqladmin -h "$GIBBON_DB_HOST" -u gibbon ping
 # Expect: "mysqld is alive"
 # If it fails: gibbon-mysql container is down, or DB_PASSWORD env is wrong.
 ```
@@ -31,7 +31,7 @@ If DB is down → escalate to ops. If creds are wrong → [rotate-admin-credenti
 ## Step 3 — version mismatch?
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
   "SELECT value FROM gibbonSetting WHERE scope='System' AND name='version';"
 # Compare to the container's code version:
 curl -sf http://gibbon/version.php 2>/dev/null || echo "version.php returned non-200"
@@ -71,7 +71,7 @@ A recently-installed or recently-upgraded module is a top suspect for 500s.
 
 ```bash
 # Any module changes recently?
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
   "SELECT name, version, type, active FROM gibbonModule ORDER BY gibbonModuleID;"
 # What's the page URL that 500s? What module does it belong to?
 # The module can be found from the URL path: /modules/<ModuleName>/<file>.php.
@@ -87,7 +87,7 @@ If the 500 is isolated to one module:
 Very busy schools can see `gibbonLog` grow to GB-scale and slow the whole app down. Check:
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "
   SELECT COUNT(*) FROM gibbonLog;
   SELECT table_schema, table_name, ROUND(data_length/1024/1024, 2) AS size_mb
   FROM information_schema.tables

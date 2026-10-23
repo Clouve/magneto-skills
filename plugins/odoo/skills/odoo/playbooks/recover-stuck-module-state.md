@@ -17,14 +17,14 @@ Check which modules are in a transitional state:
 
 ```bash
 # Query via TCP psql from the agent environment:
-PGPASSWORD="$ODOO_DB_PASSWORD" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
+PGPASSWORD="${ODOO_DB_PASSWORD:-$(clv-secret ODOO_DB_PASSWORD)}" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
   -c "SELECT name, state, latest_version FROM ir_module_module WHERE state NOT IN ('installed','uninstalled','uninstallable') ORDER BY name;"
 ```
 
 Check for the `partially_updated_database` flag (this causes crons to skip the DB):
 
 ```bash
-PGPASSWORD="$ODOO_DB_PASSWORD" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
+PGPASSWORD="${ODOO_DB_PASSWORD:-$(clv-secret ODOO_DB_PASSWORD)}" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
   -c "SELECT key, value FROM ir_config_parameter WHERE key = 'base.partially_updated_database';"
 ```
 
@@ -33,7 +33,7 @@ If `value = '1'`, the database is flagged as partially updated and crons are sus
 ## Step 2: Take a backup before any recovery action
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
   "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
@@ -46,7 +46,7 @@ This pipes the skill's own `scripts/backup.sh` into the Odoo container. [playboo
 **Option A — via the Odoo shell (preferred):**
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 # button_reset_state() transitions:
 #   'to install'  → 'uninstalled'
@@ -62,7 +62,7 @@ EOF"
 **Option B — via `reset_modules_state` (Python loader function):**
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 from odoo.modules.loading import reset_modules_state
 reset_modules_state('<db>')
@@ -78,14 +78,14 @@ EOF"
 After resetting module states, the `base.partially_updated_database` parameter should be cleared automatically. Verify:
 
 ```bash
-PGPASSWORD="$ODOO_DB_PASSWORD" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
+PGPASSWORD="${ODOO_DB_PASSWORD:-$(clv-secret ODOO_DB_PASSWORD)}" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
   -c "SELECT key, value FROM ir_config_parameter WHERE key = 'base.partially_updated_database';"
 ```
 
 If it is still `'1'`, clear it via the shell:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 param = env['ir.config_parameter'].sudo().search([('key', '=', 'base.partially_updated_database')])
 param.unlink()
@@ -99,7 +99,7 @@ EOF"
 Odoo stays up. Re-run the module upgrade that was interrupted (see [playbooks/install-or-upgrade-module.md](install-or-upgrade-module.md)); when it finishes, the running server reloads its registry by itself. If the module's code in `/mnt/extra-addons` changed since Odoo last started, restart Odoo in its container first (`SIGHUP`, step 2 of that playbook):
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo -c /etc/odoo/odoo.conf -d <db> -u <mod> --stop-after-init"
 ```
 
@@ -108,7 +108,7 @@ SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
 After a successful upgrade pass, confirm crons are running again:
 
 ```bash
-PGPASSWORD="$ODOO_DB_PASSWORD" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
+PGPASSWORD="${ODOO_DB_PASSWORD:-$(clv-secret ODOO_DB_PASSWORD)}" psql -h "$ODOO_DB_HOST" -U odoo -d <db> \
   -c "SELECT name, active, nextcall FROM ir_cron WHERE active = true ORDER BY nextcall LIMIT 10;"
 ```
 

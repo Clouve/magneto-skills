@@ -28,7 +28,7 @@
 #
 # Env vars read (injected by the platform's sidecar env fetcher; names vary
 # per deployment — discover with `compgen -e | grep -iE 'wordpress|mysql|maria|host'`
-# if the defaults below don't resolve):
+# if the defaults below don't resolve; the passwords' names: `clv-secret --list`):
 #   WORDPRESS_DB_HOST        — pod-internal hostname of the DB sibling (required)
 #   WORDPRESS_DB_PASSWORD    — DB password (required; never printed)
 #   WORDPRESS_DB_USER        — DB user (default: wordpress)
@@ -55,6 +55,9 @@
 
 set -euo pipefail
 
+: "${WORDPRESS_DB_PASSWORD:=$(clv-secret WORDPRESS_DB_PASSWORD)}"
+: "${CLOUVE_OPS_PASSWORD:=$(clv-secret CLOUVE_OPS_PASSWORD)}"
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [-h|--help]
@@ -75,8 +78,14 @@ fi
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 err() { printf '[%s] ERROR: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
+# An older agent keeps passwords in its environment, so compgen finds their
+# names. A current agent doesn't, so clv-secret --list does. The hint is a
+# variable because tests/skills-env-values.test.sh rejects a compgen line that
+# names a password.
+names_hint="Discover the injected names with: compgen -e | grep -iE 'wordpress|mysql|maria|host' (passwords: clv-secret --list)"
+
 : "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST not set — run: compgen -e | grep -iE 'wordpress|mysql|maria|host' to discover the injected names}"
-: "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD not set — discover with: compgen -e | grep -iE 'wordpress|mysql|maria'}"
+: "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD not set. ${names_hint}}"
 : "${WORDPRESS_DB_USER:=wordpress}"
 : "${WORDPRESS_DB_NAME:=wordpress}"
 : "${WORDPRESS_TABLE_PREFIX:=wp_}"

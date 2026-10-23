@@ -5,7 +5,7 @@
 # the skill's own folder over the clouve-ops SSH channel, and `bash -s` runs it
 # there:
 #
-#   SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new \
+#   SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new \
 #     clouve-ops@${ODOO_HOST} "sudo bash -s -- <db>" \
 #     < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 #

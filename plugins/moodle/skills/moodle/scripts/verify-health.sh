@@ -27,6 +27,9 @@
 
 set -uo pipefail
 
+: "${MOODLE_DB_PASSWORD:=$(clv-secret MOODLE_DB_PASSWORD)}"
+: "${CLOUVE_OPS_PASSWORD:=$(clv-secret CLOUVE_OPS_PASSWORD)}"
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [-h|--help]

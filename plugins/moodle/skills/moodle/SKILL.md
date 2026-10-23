@@ -2,7 +2,7 @@
 name: moodle
 description: Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
-version: 0.1.3
+version: 0.1.5
 authoredAgainst: moodle v5.2.0
 ---
 
@@ -39,8 +39,9 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
-- Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MySQL 8.4; Moodle 5.2 also supports MariaDB ≥10.11 and PostgreSQL ≥16 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `compgen -e | grep -i moodle` (names only) before relying on any specific one, and pass a value as `$(printenv NAME)` without printing it.
-- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env); connect with `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
+- Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MySQL 8.4; Moodle 5.2 also supports MariaDB ≥10.11 and PostgreSQL ≥16 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `compgen -e | grep -i moodle` (names only), and the passwords' names with `clv-secret --list | grep -i moodle`, before relying on any specific one.
+- Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
+- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`; connect with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 
 ## What changed in 5.2 (the things that bite operators)
 

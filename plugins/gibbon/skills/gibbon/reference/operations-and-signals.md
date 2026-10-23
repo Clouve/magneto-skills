@@ -5,7 +5,7 @@
 A healthy Gibbon container in this app satisfies all of the below. Run these checks whenever the user asks "is this working?"
 
 1. **HTTP**. `curl -sI http://gibbon/index.php` from inside the Magneto Agent container returns `200 OK`. Login page renders (html contains `Gibbon`).
-2. **DB reachability**. `mysqladmin -h gibbon-mysql -u gibbon -p"$GIBBON_DB_PASSWORD" ping` returns `mysqld is alive`.
+2. **DB reachability**. `mysqladmin -h gibbon-mysql -u gibbon -p"${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" ping` returns `mysqld is alive`.
 3. **`gibbonSetting(version) == /var/www/html/version.php $version`**. If they drift, an upgrade is pending.
 4. **Cron running**. Inside the `gibbon` container: `service cron status` → `cron is running`. From Magneto Agent you can't check this directly — you'd infer from whether `/var/log/gibbon-cron.log` is progressing, but you also can't read that file from Magneto Agent. See "Limits" below.
 5. **Uploads writable**. `uploads/cache/` owned by `www-data`, mode 755. Gibbon writes compiled templates here on every request.
