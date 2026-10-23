@@ -41,7 +41,7 @@ The SSH hop is unambiguously needed for any of:
 The SSH hop is overkill (and slower) for:
 
 - **Routine SQL.** From the Magneto Agent container you can `mysql -h ${MOODLE_DB_HOST} ...` or `psql -h ${MOODLE_DB_HOST} ...` over TCP — no SSH hop needed.
-- **HTTP probes.** `curl -sI http://${MOODLE_HOST}/login/index.php` works directly.
+- **HTTP probes.** `curl -sI -H "Host: ${MOODLE_URL#*://}" http://${MOODLE_HOST}/login/index.php` works directly. Send the site's host: Moodle answers any other host with a 303 to its `wwwroot`, and on Kubernetes `${MOODLE_HOST}` is the internal service name.
 - **Reading files that the script wrapper already exposes.** [scripts/php-info.sh](../scripts/php-info.sh) and [scripts/verify-health.sh](../scripts/verify-health.sh) are designed to give you the data you need without SSH.
 
 The TCP channels (mysql, curl) are faster and produce more reliable transcripts. Reach for SSH only when you need filesystem access or a process inside the target container.

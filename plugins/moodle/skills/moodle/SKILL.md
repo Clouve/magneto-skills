@@ -2,7 +2,7 @@
 name: moodle
 description: Safely operate a Moodle 5.2.x LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
-version: 0.1.5
+version: 0.1.6
 authoredAgainst: moodle v5.2.0
 ---
 

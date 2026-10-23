@@ -17,6 +17,8 @@
 #   MOODLE_DB_HOST       — pod-internal hostname of moodle-mysql container
 #   MOODLE_DB_USER, MOODLE_DB_PASSWORD, MOODLE_DB_NAME
 #   MOODLE_DBTYPE        — 'mariadb' | 'mysqli' | 'pgsql' (default: 'mariadb')
+#   MOODLE_URL           — the site's public URL (wwwroot); optional, gives the
+#                          login-page probe its Host header
 #   CLOUVE_OPS_PASSWORD  — for sshpass -e
 #
 # Exit codes:
@@ -66,8 +68,21 @@ check() {
 }
 
 # --- 1. HTTP probe on /login/index.php
+# Moodle answers 303 to any host but its wwwroot's, so the probe of the sibling
+# sends the host of MOODLE_URL (the site's public address). With an https URL
+# the image sets $CFG->sslproxy, so Moodle takes this plain-http request for
+# https and checks only the host. Without MOODLE_URL the probe goes out bare.
+site_host=""
+site_path=""
+if [[ "${MOODLE_URL:-}" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/?#]+)([^?#]*) ]]; then
+    site_host="${BASH_REMATCH[1]##*@}"
+    site_path="${BASH_REMATCH[2]%/}"
+fi
+host_header=()
+[[ -n "${site_host}" ]] && host_header=(-H "Host: ${site_host}")
 http_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-    "http://${MOODLE_HOST}/login/index.php" || echo "000")
+    ${host_header[@]+"${host_header[@]}"} \
+    "http://${MOODLE_HOST}${site_path}/login/index.php" || echo "000")
 case "${http_code}" in
     200) check "http_login_page" "OK"   "200" ;;
     503) check "http_login_page" "WARN" "503 (maintenance mode?)" ;;
@@ -102,35 +117,48 @@ else
 fi
 
 # --- 3. Code version (via SSH to moodle container)
+# The code's $version from version.php on the sibling: public/version.php on
+# Moodle 5.1+, else version.php at the code root, as the image itself reads it.
+# ($CFG->version would be the database's version, which step 2 already read.)
+# The commands go to `bash -s` on stdin, so the remote shell expands nothing.
 export SSHPASS="${CLOUVE_OPS_PASSWORD}"
 ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no -o ConnectTimeout=10)
-code_version=$(sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" \
-    'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo $CFG->version;"' \
-    2>/dev/null || echo "")
+code_version=$(sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" 'bash -s' 2>/dev/null <<'REMOTE' || true
+for vf in /var/www/html/public/version.php /var/www/html/version.php; do
+    if sudo -n -u www-data test -f "$vf"; then
+        sudo -n -u www-data sed -nE 's/^[[:space:]]*\$version[[:space:]]*=[[:space:]]*([0-9]+(\.[0-9]+)?).*/\1/p' "$vf" | head -n 1
+        break
+    fi
+done
+REMOTE
+)
 unset SSHPASS
+# version.php says 2026042000.00 where mdl_config says 2026042000; a weekly
+# build's 2024100700.01 stays as it is.
+code_version="${code_version//[[:space:]]/}"
+[[ "${code_version}" =~ ^([0-9]+)\.0+$ ]] && code_version="${BASH_REMATCH[1]}"
 
 if [[ -z "${code_version}" ]]; then
-    check "code_version" "FAIL" "could not read public/version.php"
+    check "code_version" "FAIL" "could not read \$version from version.php"
 else
     check "code_version" "OK" "version=${code_version}"
 fi
 
 # --- 4. Code vs. DB invariant
 if [[ -n "${code_version}" && -n "${db_version}" ]]; then
-    if [[ "${code_version}" == "${db_version}" ]]; then
-        check "version_invariant" "OK" "code matches DB"
-    else
-        # Compare numerically — Moodle versions are floats like 2026042000.00
-        cmp=$(awk -v a="${code_version}" -v b="${db_version}" 'BEGIN{ if (a>b) print "code_newer"; else if (a<b) print "code_older"; else print "equal"; }')
-        case "${cmp}" in
-            code_newer)
-                check "version_invariant" "WARN" "code=${code_version} > db=${db_version} (upgrade pending)"
-                ;;
-            code_older)
-                check "version_invariant" "FAIL" "code=${code_version} < db=${db_version} (DB AHEAD of code — site refuses to bootstrap)"
-                ;;
-        esac
-    fi
+    # Compared as numbers: Moodle versions are decimals like 2024100700.01.
+    cmp=$(awk -v a="${code_version}" -v b="${db_version}" 'BEGIN{ if (a+0 > b+0) print "code_newer"; else if (a+0 < b+0) print "code_older"; else print "equal"; }')
+    case "${cmp}" in
+        equal)
+            check "version_invariant" "OK" "code matches DB"
+            ;;
+        code_newer)
+            check "version_invariant" "WARN" "code=${code_version} > db=${db_version} (upgrade pending)"
+            ;;
+        code_older)
+            check "version_invariant" "FAIL" "code=${code_version} < db=${db_version} (DB AHEAD of code — site refuses to bootstrap)"
+            ;;
+    esac
 fi
 
 # --- 5. Maintenance mode
@@ -155,22 +183,27 @@ case "${maint}" in
 esac
 
 # --- 6. Cron freshness (most recent timestart in mdl_task_log)
+# timestart is a decimal column (1792790161.4598000000): keep whole seconds,
+# since shell arithmetic takes integers only.
 last_cron=""
 case "${MOODLE_DBTYPE}" in
     mariadb|mysqli|auroramysql)
         last_cron=$(MYSQL_PWD="${MOODLE_DB_PASSWORD}" mysql \
             -h "${MOODLE_DB_HOST}" -u "${MOODLE_DB_USER}" "${MOODLE_DB_NAME}" \
-            -sN -e "SELECT MAX(timestart) FROM mdl_task_log" 2>/dev/null || echo "")
+            -sN -e "SELECT FLOOR(MAX(timestart)) FROM mdl_task_log" 2>/dev/null || echo "")
         ;;
     pgsql)
         last_cron=$(PGPASSWORD="${MOODLE_DB_PASSWORD}" psql \
             -h "${MOODLE_DB_HOST}" -U "${MOODLE_DB_USER}" -d "${MOODLE_DB_NAME}" \
-            -tAc "SELECT MAX(timestart) FROM mdl_task_log" 2>/dev/null || echo "")
+            -tAc "SELECT FLOOR(MAX(timestart)) FROM mdl_task_log" 2>/dev/null || echo "")
         ;;
 esac
 last_cron="${last_cron// /}"
+last_cron="${last_cron%%.*}"
 if [[ -z "${last_cron}" || "${last_cron}" == "NULL" ]]; then
     check "cron_freshness" "WARN" "no rows in mdl_task_log yet"
+elif [[ ! "${last_cron}" =~ ^[0-9]+$ ]]; then
+    check "cron_freshness" "WARN" "unreadable MAX(timestart): ${last_cron:0:40}"
 else
     now=$(date +%s)
     age=$(( now - last_cron ))
