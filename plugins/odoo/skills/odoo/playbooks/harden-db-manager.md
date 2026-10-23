@@ -21,7 +21,7 @@ On Clouve, `admin_passwd` comes from `ODOO_MASTER_PASSWORD`, a random secret Clo
 ```bash
 # Prints two counts. "1" then "0": set, and not 'admin'. A second "1": still 'admin'.
 # A first "0": missing, so Odoo falls back to 'admin'.
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo grep -c '^admin_passwd' /etc/odoo/odoo.conf; sudo grep -cE '^admin_passwd *= *admin *$' /etc/odoo/odoo.conf || true"
 ```
 
@@ -34,7 +34,7 @@ If it is the default, change it immediately. The deployment's App Configuration 
 The real function is `exp_change_admin_password(new_password)` — single argument, no old password:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 import odoo.service.db as db_svc
 db_svc.exp_change_admin_password('NEW_STRONG_PASSWORD_HERE')
@@ -61,7 +61,7 @@ db_name = myproductiondb
 Verify the config is active:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo grep -E 'list_db|db_name|dbfilter' /etc/odoo/odoo.conf"
 ```
 

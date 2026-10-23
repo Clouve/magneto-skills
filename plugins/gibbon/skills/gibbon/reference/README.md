@@ -20,7 +20,7 @@ Everything in this `reference/` folder is research — the operational rules the
 | [academic-year-rollover.md](academic-year-rollover.md) | Why rollover is the riskiest routine operation, the 3-step flow in `modules/User Admin/rollover.php`, the `max_input_vars` cliff |
 | [security.md](security.md) | File permissions, installer lockdown, CSRF/nonce, 2FA, `Impersonate User` gate, known CVEs from the v30 release notes |
 | [operations-and-signals.md](operations-and-signals.md) | What "healthy" looks like, where logs live, the in-container cron daemon + `gibbon-cron.sh` dispatcher |
-| [shell-access.md](shell-access.md) | SSH into the `gibbon` and `gibbon-mysql` side containers via the `clouve-ops` operator account using `${CLOUVE_OPS_PASSWORD}` |
+| [shell-access.md](shell-access.md) | SSH into the `gibbon` and `gibbon-mysql` side containers via the `clouve-ops` operator account using `CLOUVE_OPS_PASSWORD` |
 | [troubleshooting.md](troubleshooting.md) | Failure modes seen in the wild (charset/collation mismatch, max_input_vars, config.php sed breakage, stale upload cache) and first-checks for each |
 
 ## Versioning

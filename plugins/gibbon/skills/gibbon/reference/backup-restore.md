@@ -35,7 +35,7 @@ out="$HOME/backups/gibbon-$timestamp"
 mkdir -p "$out"
 
 # 1. DB dump
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysqldump \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqldump \
   -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" \
   --single-transaction --quick --lock-tables=false \
   --default-character-set=utf8mb3 \
@@ -60,7 +60,7 @@ Tell the user which path you took and ask them to confirm.
 
 ```
 # 1. Confirm gibbon-mysql is reachable and the target DB is empty or you're overwriting intentionally
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" \
   "$GIBBON_DB_NAME" -e "SHOW TABLES;" | wc -l
 
 # 2. Drop and recreate the DB (requires root access — usually NOT available to the gibbon user)
@@ -72,7 +72,7 @@ MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" 
 # Partial-restore example (single table recovery — only with explicit user ack):
 # Extract just that table's CREATE+INSERTs from the dump:
 awk '/^-- Table structure for table `gibbonBehaviour`/,/^-- Table structure for table `/' dump.sql > one.sql
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" "$GIBBON_DB_NAME" < one.sql
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" "$GIBBON_DB_NAME" < one.sql
 ```
 
 ### Filesystem restore

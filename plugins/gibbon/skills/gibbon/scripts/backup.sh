@@ -27,6 +27,8 @@
 
 set -u
 
+: "${GIBBON_DB_PASSWORD:=$(clv-secret GIBBON_DB_PASSWORD)}"
+
 . "$(dirname "${BASH_SOURCE[0]}")/lib/mysql-tls.sh"
 
 : "${GIBBON_DB_HOST:?GIBBON_DB_HOST not set — app env not injected correctly}"

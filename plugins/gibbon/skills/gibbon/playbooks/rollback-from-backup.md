@@ -22,7 +22,7 @@ When in doubt, full restore. The operational cost is small; the cost of a partia
 
 ```bash
 # Timestamp + DB snapshot of what you're about to overwrite.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysqldump \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqldump \
   -h "$GIBBON_DB_HOST" -u gibbon \
   --single-transaction --quick --lock-tables=false \
   --default-character-set=utf8mb3 \
@@ -44,13 +44,13 @@ Magneto Agent cannot write to the `gibbon` container's `/var/www/html` volume. T
 
 ```bash
 # Wipe the existing tables. The gibbon user usually can DROP tables in its own DB.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
   "SET FOREIGN_KEY_CHECKS=0;" \
-  -e "$(MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
+  -e "$(MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
         "SELECT CONCAT('DROP TABLE IF EXISTS \`', table_name, '\`;') FROM information_schema.tables WHERE table_schema='gibbon';" | tr '\n' ' ')"
 
 # Apply the dump.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql \
   -h "$GIBBON_DB_HOST" -u gibbon \
   --default-character-set=utf8mb3 \
   gibbon < "$HOME/backups/gibbon-<timestamp>/gibbon.sql"
@@ -100,7 +100,7 @@ grep -c '^CREATE TABLE' "/tmp/${TABLE}.sql"   # expect 2 (this table + the start
 ### Apply with FK checks off
 
 ```bash
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon <<EOF
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon <<EOF
 SET FOREIGN_KEY_CHECKS=0;
 DROP TABLE IF EXISTS \`${TABLE}\`;
 SOURCE /tmp/${TABLE}.sql;

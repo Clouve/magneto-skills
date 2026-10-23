@@ -36,7 +36,7 @@ curl -sS "http://${WORDPRESS_HOST}/" | grep -io '<meta name="generator"[^>]*>'  
 
 ```bash
 # [shell-only — probe first] exact answer, when a shell exists:
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
     "wp core version --path=/var/www/html --allow-root"
 ```
 

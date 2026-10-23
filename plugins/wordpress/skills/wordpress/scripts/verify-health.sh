@@ -21,7 +21,8 @@
 # pod does not mean a healthy install (see ../SKILL.md).
 #
 # Env vars read (names vary per deployment — discover with
-# `compgen -e | grep -iE 'wordpress|mysql|maria|host'` if defaults don't resolve):
+# `compgen -e | grep -iE 'wordpress|mysql|maria|host'` if defaults don't resolve;
+# the passwords' names: `clv-secret --list`):
 #   WORDPRESS_HOST           — pod-internal hostname of the WordPress sibling
 #                              (default: wordpress)
 #   WORDPRESS_DB_HOST        — pod-internal hostname of the DB sibling (required)
@@ -39,6 +40,8 @@
 #   3 — at least one check returned FAIL
 
 set -uo pipefail
+
+: "${WORDPRESS_DB_PASSWORD:=$(clv-secret WORDPRESS_DB_PASSWORD)}"
 
 usage() {
     cat <<EOF

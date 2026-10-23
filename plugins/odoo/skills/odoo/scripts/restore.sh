@@ -7,6 +7,8 @@
 # Usage: restore.sh <target-db> <backup.zip-on-odoo-host> [--prod]
 set -euo pipefail
 
+: "${CLOUVE_OPS_PASSWORD:=$(clv-secret CLOUVE_OPS_PASSWORD)}"
+
 DB="${1:?usage: restore.sh <target-db> <backup.zip> [--prod]}"
 ZIP="${2:?usage: restore.sh <target-db> <backup.zip> [--prod]}"
 ALLOW_PROD="${3:-}"

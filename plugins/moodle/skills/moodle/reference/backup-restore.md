@@ -54,7 +54,7 @@ sudo -u www-data php admin/cli/maintenance.php --enable
 sudo -u www-data php admin/cli/cron.php --list
 
 # 3) DB dump (MariaDB / MySQL)
-MYSQL_PWD="$MOODLE_DB_PASSWORD" mysqldump \
+MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysqldump \
     -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" \
     --single-transaction --quick --lock-tables=false \
     --default-character-set=utf8mb4 \
@@ -62,7 +62,7 @@ MYSQL_PWD="$MOODLE_DB_PASSWORD" mysqldump \
     > moodle-$(date +%Y%m%d-%H%M%S).sql
 
 # Or PostgreSQL
-PGPASSWORD="$MOODLE_DB_PASSWORD" pg_dump \
+PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" pg_dump \
     -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" \
     -F c -f moodle-$(date +%Y%m%d-%H%M%S).dump \
     "$MOODLE_DB_NAME"

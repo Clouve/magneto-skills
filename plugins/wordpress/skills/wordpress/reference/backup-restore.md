@@ -52,12 +52,12 @@ SELECT option_value FROM wp_options WHERE option_name='_site_transient_update_pl
 
 ## Taking the DB dump [TCP-mysql]
 
-Store backups under `$HOME` (persistent across pod restarts; `/tmp` and `/clouve` are not). Discover env names first: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`. Examples assume the default `wp_` prefix — confirm with `SHOW TABLES LIKE '%options';`.
+Store backups under `$HOME` (persistent across pod restarts; `/tmp` and `/clouve` are not). Discover env names first: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and the passwords' names with `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`. Examples assume the default `wp_` prefix — confirm with `SHOW TABLES LIKE '%options';`.
 
 ```bash
 mkdir -p "$HOME/backups"
 ts=$(date +%Y%m%d-%H%M%S)
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysqldump \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqldump \
     -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
     --single-transaction --quick \
     --default-character-set=utf8mb4 \
@@ -73,14 +73,14 @@ MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysqldump \
 
 ## Archiving `wp-content/` — [shell-only — probe first]
 
-Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — expect failure on today's images. When a shell *does* exist:
+Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — expect failure on today's images. When a shell *does* exist:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
     "sudo tar -C /var/www/html --exclude='wp-content/cache/*' -czf - wp-content" \
     > "$HOME/backups/wp-content-$ts.tar.gz"
 # And the config copy:
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
     "sudo cat /var/www/html/wp-config.php" > "$HOME/backups/wp-config-$ts.php"
 ```
 
@@ -93,7 +93,7 @@ Order matters (files first so the DB never references code/media that isn't ther
 1. **Files** — `wp-content/` from the archive **[shell-only — probe first]**; without a channel see [playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md) for what a DB-only restore means and how to route the file half.
 2. **DB import** — **[TCP-mysql]**:
    ```bash
-   gunzip -c "$HOME/backups/wordpress-<ts>.sql.gz" | MYSQL_PWD="$WORDPRESS_DB_PASSWORD" \
+   gunzip -c "$HOME/backups/wordpress-<ts>.sql.gz" | MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" \
        mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME"
    ```
    `mysqldump` output includes `DROP TABLE IF EXISTS` per table, so the import replaces every dumped table. Tables *created after* the backup (e.g. by a since-installed plugin) survive the import — compare `SHOW TABLES` against the manifest and drop leftovers only under the schema-change gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow).

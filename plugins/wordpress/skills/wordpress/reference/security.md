@@ -23,7 +23,7 @@ This skill's defining constraint is the channel matrix. From the Magneto Agent c
 
 WordPress leaks usernames through two public surfaces. Both are HTTP-checkable without auth; neither is fixable from the agent today.
 
-Discover the sibling host first (`compgen -e | grep -iE 'wordpress|host'`), then:
+Discover the sibling host first (`compgen -e | grep -iE 'wordpress|host'`; the passwords' names are in `clv-secret --list | grep -iE 'wordpress|host'`), then:
 
 **Author-archive redirect.** A request for `?author=<n>` 301-redirects to `/author/<login-slug>/`, and the slug is usually the exact `user_login`:
 
@@ -77,7 +77,7 @@ If the site genuinely uses XML-RPC (older mobile apps, Jetpack in some modes), d
 **Default username.** Check whether the primary admin is the guessable `admin`:
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT u.ID, u.user_login FROM wp_users u
    JOIN wp_usermeta m ON m.user_id = u.ID

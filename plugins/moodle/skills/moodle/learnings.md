@@ -6,6 +6,12 @@ Living scratchpad for Moodle-specific facts captured during real sessions that d
 
 Each entry: dated (ISO-8601), terse, leads with the fact. If an entry grows past ~10 lines, promote it to a dedicated file and leave a one-line pointer.
 
+## What does NOT go here
+
+- Secrets. Ever. (Including the literal value of `CLOUVE_OPS_PASSWORD`, the AI Assistant's access key (`MAGNETO_AGENT_LLM_KEY`), or any DB password.)
+
+The rest of what stays out is in [SKILL.md → What does NOT qualify](SKILL.md#what-does-not-qualify).
+
 ---
 
 ## 2026-04-28 — `admin/cli/` lives OUTSIDE the webroot in 5.2

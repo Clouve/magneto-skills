@@ -31,7 +31,7 @@
 
 | Option | CLI flag | Default | Notes |
 |---|---|---|---|
-| `admin_passwd` | **none** (file-only) | `'admin'` | Protects DB manager. **File-only**: no `--admin-passwd` CLI flag exists. Declared as `FileOnlyOption` in `config.py`. The entrypoint templates `${ODOO_MASTER_PASSWORD}` → this key; if unset, a random password is generated. At runtime Odoo hashes it with `pbkdf2_sha512`. |
+| `admin_passwd` | **none** (file-only) | `'admin'` | Protects DB manager. **File-only**: no `--admin-passwd` CLI flag exists. Declared as `FileOnlyOption` in `config.py`. The entrypoint templates `ODOO_MASTER_PASSWORD` → this key; if unset, a random password is generated. At runtime Odoo hashes it with `pbkdf2_sha512`. |
 | `list_db` | `--no-database-list` | `True` | Set `list_db = False` in conf (or pass `--no-database-list`) to hide the DB selector and manager — required in production. |
 
 ### Web & proxy

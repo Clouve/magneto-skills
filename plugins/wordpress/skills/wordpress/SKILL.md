@@ -2,7 +2,7 @@
 name: wordpress
 description: Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions "WordPress", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.
 type: devops
-version: 0.1.3
+version: 0.1.4
 authoredAgainst: wordpress v6.9.0
 ---
 
@@ -40,11 +40,12 @@ Use this skill when the user is working with a WordPress deployment on Clouve, w
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod, alongside a WordPress container and its database container.
-- Sibling hostnames and credentials arrive as env vars injected by the platform (the sidecar env fetcher re-exports each sibling's environment into yours). **Discover before relying on names**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` lists the names only. Pass a value as `$(printenv NAME)` and never print the passwords. Expect the `WORDPRESS_DB_*` set (host, name, user, password) — that is your TCP credential for the database.
+- Sibling hostnames and settings arrive as env vars injected by the platform (the sidecar env fetcher re-exports each sibling's environment into yours, except the passwords). **Discover before relying on names**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'` lists the names only, and `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'` lists the passwords' names. Expect the `WORDPRESS_DB_*` set (host, name and user in your environment, the password from `clv-secret`). That is your TCP credential for the database.
+- Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
 - **Two deployment shapes exist** (details in [reference/stack-and-runtime.md](reference/stack-and-runtime.md)):
   - *Clouve-packaged app* (`wordpress` + `wordpress-mariadb` containers): pinned `wordpress:6.9.0` base with wp-cli at `/usr/local/bin/wp`, a mysql client, PHP limits raised (512M memory, 100M uploads), and the installer entrypoint (`/clouve/wordpress/installer/entrypoint.sh`) that auto-installs, reconciles `siteurl`/`home` from `WORDPRESS_SITE_URL`, forces `WP_DEBUG_DISPLAY` off, and re-chowns `wp-content/uploads` — on every boot. Database is MariaDB.
   - *Developer-submitted compose* (service names vary; e.g. vanilla `wordpress:6.8-apache` + `mysql:8.0`): no wp-cli, no mysql client in the web container, stock entrypoint (first boot serves the browser installer; nothing reconciles URLs). `MYSQL_RANDOM_ROOT_PASSWORD` is common — you have the app-scoped DB user only, and root access does not exist for anyone.
-- Channels from the agent container: `mysql`/`mysqldump` over TCP to the DB sibling, `curl` to the WordPress sibling on port 80, and — only if the sibling image ships the `clouve-ops` SSH account (today's WordPress images do not) — `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@<host>`. Probe, don't assume: [reference/shell-access.md](reference/shell-access.md).
+- Channels from the agent container: `mysql`/`mysqldump` over TCP to the DB sibling, `curl` to the WordPress sibling on port 80, and — only if the sibling image ships the `clouve-ops` SSH account (today's WordPress images do not) — `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@<host>`. Probe, don't assume: [reference/shell-access.md](reference/shell-access.md).
 
 ## What the Clouve installer entrypoint does (the things that bite operators)
 

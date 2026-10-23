@@ -2,7 +2,7 @@
 
 Failure modes seen in the wild and the **first** thing to check for each. Stop after one diagnostic step — if the answer isn't obvious, escalate the diagnosis flow rather than running 5 tools at once. Every probe is channel-labeled ([reference/shell-access.md](shell-access.md)); remember there is **no shell and no wp-cli** on today's WordPress deployments, so each entry gives the live TCP/HTTP path and says plainly when only a file channel or support can finish the job.
 
-`${WORDPRESS_HOST}` / `${WORDPRESS_DB_*}` below are the discovered names — run `compgen -e | grep -iE 'wordpress|mysql|maria|host'` first.
+`${WORDPRESS_HOST}` / `${WORDPRESS_DB_*}` below are the discovered names. Run `compgen -e | grep -iE 'wordpress|mysql|maria|host'` first, and `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'` for the passwords' names.
 
 ## "The site is down"
 
@@ -19,7 +19,7 @@ Split web from DB first — two probes, one conclusion:
 
 2. **[TCP-mysql]** Is the DB answering?
    ```bash
-   MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" -e "SELECT 1"
+   MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" -e "SELECT 1"
    ```
    - Refused/timeout → DB container down or still starting. Platform action; escalate.
    - Auth error → see "mysql client can't authenticate" below before concluding anything.

@@ -14,25 +14,26 @@ This file is the channel matrix: what each channel gives you, how credentials ar
 
 ## Channel 1: [TCP-mysql] — the database
 
-The `mysql` and `mysqldump` clients are installed on the agent by this plugin's `install.sh`. Credentials arrive as env vars: the sidecar env fetcher re-exports the sibling containers' environment into your shell. **Names vary between deployments — always discover before relying on a var name:**
+The `mysql` and `mysqldump` clients are installed on the agent by this plugin's `install.sh`. Connection settings arrive as env vars: the sidecar env fetcher re-exports the sibling containers' environment into your shell, except the passwords, which `clv-secret` holds. **Names vary between deployments — always discover before relying on a var name:**
 
 ```bash
 compgen -e | grep -iE 'wordpress|mysql|maria|host'
+clv-secret --list | grep -iE 'wordpress|mysql|maria|host'   # the passwords' names
 ```
 
-Expect the `WORDPRESS_DB_*` set (host, name, user, password) — that is your TCP credential. In the commands throughout this skill, `${WORDPRESS_HOST}` stands for the discovered web-container hostname and `${WORDPRESS_DB_*}` for the discovered credential set; substitute what discovery actually printed.
+Expect the `WORDPRESS_DB_*` set (host, name and user from the first command, the password from the second). That is your TCP credential. In the commands throughout this skill, `${WORDPRESS_HOST}` stands for the discovered web-container hostname and `${WORDPRESS_DB_*}` for the discovered credential set; substitute what discovery actually printed.
 
 ```bash
 # Connectivity check (the canonical "is the DB up" probe):
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
       "$WORDPRESS_DB_NAME" -e "SELECT 1"
 
 # Confirm the real table prefix before trusting any wp_-prefixed query:
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
       "$WORDPRESS_DB_NAME" -e "SHOW TABLES LIKE '%options'"
 
 # Read-only dump (backup half #1 — see backup-restore.md):
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysqldump -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqldump -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
       --single-transaction "$WORDPRESS_DB_NAME" > dump.sql
 ```
 
@@ -70,13 +71,13 @@ Note that you probe the sibling over plain HTTP on :80 while real users arrive t
 **Expected result today: failure.** The moodle and gibbon sibling images ship sshd and a `clouve-ops` account with passwordless sudo, and those skills lean on SSH for logs, CLI scripts, and file surgery. Today's WordPress images ship **neither** — but the platform mechanism is generic, so a future WordPress image rebuild could light this channel up. Probe, never assume, and never write a plan whose happy path needs a channel you haven't proven:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
     "clouve-ops@${WORDPRESS_HOST}" true \
     && echo "shell channel: AVAILABLE" \
     || echo "shell channel: not available (expected today)"
 ```
 
-- Any failure — connection refused (no sshd), timeout, auth rejection (no account), or `CLOUVE_OPS_PASSWORD` unset in your env — means the channel is absent. Do not retry-loop; record the result and use the TCP/HTTP path.
+- Any failure means the channel is absent: connection refused (no sshd), timeout, auth rejection (no account), or `CLOUVE_OPS_PASSWORD` not set. Do not retry-loop; record the result and use the TCP/HTTP path.
 - Probe once per session per host; a sibling that failed the probe at session start will not spontaneously grow an sshd.
 
 **What lights up if the probe ever succeeds** (Shape A):

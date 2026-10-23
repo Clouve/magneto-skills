@@ -17,6 +17,8 @@
 
 set -euo pipefail
 
+: "${CLOUVE_OPS_PASSWORD:=$(clv-secret CLOUVE_OPS_PASSWORD)}"
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [-h|--help]

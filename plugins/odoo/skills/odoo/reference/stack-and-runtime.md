@@ -57,7 +57,7 @@ Selection logic in `start()`:
 Odoo is PID 1 in its container: the entrypoint `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`, and the clouve-ops `sshd` runs as its child. To restart Odoo, send it `SIGHUP` over the clouve-ops channel:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   'grep -q odoo /proc/1/cmdline && sudo kill -HUP 1'
 for i in $(seq 1 30); do
   sleep 2

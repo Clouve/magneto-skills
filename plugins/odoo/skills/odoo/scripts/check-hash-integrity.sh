@@ -9,6 +9,8 @@
 # the results, prints each journal's status, and exits non-zero if any are corrupted.
 set -euo pipefail
 
+: "${CLOUVE_OPS_PASSWORD:=$(clv-secret CLOUVE_OPS_PASSWORD)}"
+
 DB="${1:-${ODOO_DB_NAME:?set ODOO_DB_NAME or pass the db as arg 1}}"
 : "${ODOO_HOST:?ODOO_HOST not set}" "${CLOUVE_OPS_PASSWORD:?CLOUVE_OPS_PASSWORD not set}"
 export SSHPASS="$CLOUVE_OPS_PASSWORD"

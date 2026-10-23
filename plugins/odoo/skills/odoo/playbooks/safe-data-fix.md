@@ -17,7 +17,7 @@ See [reference/accounting-integrity.md](../reference/accounting-integrity.md) an
 All ORM-driven fixes run via `odoo shell -c /etc/odoo/odoo.conf -d <db>`. Over SSH, keep the `-c`: `sudo` drops the image's `ODOO_RC`, and without it the shell can't reach the database.
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http"
 ```
 
@@ -61,7 +61,7 @@ env.cr.commit()
 
 ```bash
 # Write the fix script locally first, then pipe it in:
-cat fix.py | SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+cat fix.py | SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http"
 ```
 

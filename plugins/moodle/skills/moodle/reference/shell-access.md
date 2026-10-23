@@ -6,11 +6,11 @@ This file describes when SSH is the right tool vs. the TCP `mysql`/`curl` channe
 
 ## Authenticating
 
-The per-pod password lives in the env var `CLOUVE_OPS_PASSWORD` — already in your shell env. Use `sshpass -e`, which reads from `SSHPASS` rather than the command line, so it never lands in shell history or `ps`:
+The per-pod password is `CLOUVE_OPS_PASSWORD`. It isn't in your environment on current agents, so a command fetches it with `${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}`. Use `sshpass -e`, which reads from `SSHPASS` rather than the command line, so it never lands in shell history or `ps`:
 
 ```bash
 # Make the per-pod password available to sshpass (do this once per shell):
-export SSHPASS=$(printenv CLOUVE_OPS_PASSWORD)
+export SSHPASS=${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}
 
 # Open an interactive shell in the moodle container:
 sshpass -e ssh clouve-ops@${MOODLE_HOST}

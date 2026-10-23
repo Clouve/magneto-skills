@@ -66,11 +66,11 @@ After install, the module's actions are in `gibbonAction` but roles may not have
 
 ```bash
 # Module row exists.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
   "SELECT gibbonModuleID, name, version, type, active FROM gibbonModule WHERE name='<ModuleName>';"
 
 # Actions were seeded.
-MYSQL_PWD="$GIBBON_DB_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e \
   "SELECT name, category, entryURL FROM gibbonAction WHERE gibbonModuleID=(SELECT gibbonModuleID FROM gibbonModule WHERE name='<ModuleName>');"
 
 # Tenant can see the module in the nav and click through its entry page.

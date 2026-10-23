@@ -24,14 +24,14 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \"Code: \", \$CFG->version, PHP_EOL;"'
 
 # 1b. DB version (what's been applied):
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -sN \
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -sN \
     -e "SELECT CONCAT('DB: ', value) FROM mdl_config WHERE name='version';"
 # Or for Postgres:
-# PGPASSWORD="$MOODLE_DB_PASSWORD" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -d "$MOODLE_DB_NAME" \
+# PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -d "$MOODLE_DB_NAME" \
 #     -tAc "SELECT 'DB: ' || value FROM mdl_config WHERE name='version';"
 
 # 1c. Row counts in the canaries — capture, you'll compare after:
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -e "
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -e "
   SELECT 'mdl_user' AS t, COUNT(*) FROM mdl_user
   UNION ALL SELECT 'mdl_course', COUNT(*) FROM mdl_course
   UNION ALL SELECT 'mdl_quiz_attempts', COUNT(*) FROM mdl_quiz_attempts
@@ -143,12 +143,12 @@ Or unpause the external scheduler.
 # 9a. Versions match — code and DB:
 sshpass -e ssh clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \"Code: \", \$CFG->version, PHP_EOL;"'
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -sN \
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -sN \
     -e "SELECT CONCAT('DB: ', value) FROM mdl_config WHERE name='version';"
 # Both should match the new release.
 
 # 9b. Row counts compare to step 1c — none should have dropped:
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"$MOODLE_DB_PASSWORD" "$MOODLE_DB_NAME" -e "
+mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -e "
   SELECT 'mdl_user' AS t, COUNT(*) FROM mdl_user
   UNION ALL SELECT 'mdl_course', COUNT(*) FROM mdl_course
   UNION ALL SELECT 'mdl_quiz_attempts', COUNT(*) FROM mdl_quiz_attempts

@@ -2,7 +2,7 @@
 
 Two deployment shapes of WordPress exist on Clouve, and almost every operational decision branches on which one you are in front of. **Run the shape probe below before planning any change.** The channel matrix at the bottom is the second thing to internalize: from the Magneto Agent container you have TCP `mysql` and HTTP `curl` — a shell into the WordPress container (and therefore wp-cli) does not exist on today's images.
 
-Examples below use `${WORDPRESS_HOST}` for the WordPress sibling hostname and the `WORDPRESS_DB_*` set for DB credentials. Names vary per deployment — discover them first: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`.
+Examples below use `${WORDPRESS_HOST}` for the WordPress sibling hostname and the `WORDPRESS_DB_*` set for DB credentials. Names vary per deployment, so discover them first: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and the passwords' names with `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`.
 
 ## The two shapes side by side
 
@@ -86,10 +86,10 @@ None of this is reachable from the agent container today — filesystem facts ar
 
 Run this at the start of any session; record the conclusion before acting.
 
-1. **[agent-local]** `compgen -e | grep -iE 'wordpress|mysql|maria|host'` — inventory the injected env. `WORDPRESS_SITE_URL` + `WORDPRESS_ADMIN_*` present ⇒ Shape A (only the packaged manifest injects them). Only the `WORDPRESS_DB_*` set ⇒ almost certainly Shape B. `WORDPRESS_DB_HOST` = `wordpress-mariadb` is a further Shape A signal.
-2. **[TCP-mysql]** `MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" -u "${WORDPRESS_DB_USER}" -e "SELECT VERSION()"` — a `-MariaDB` banner is consistent with Shape A (exact version floats — the image is unpinned, so **always check, never assume** the engine version); `8.0.x` matches the Shape B demo.
+1. **[agent-local]** `compgen -e | grep -iE 'wordpress|mysql|maria|host'` inventories the injected env, and `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'` adds the passwords' names. `WORDPRESS_SITE_URL` + `WORDPRESS_ADMIN_*` present ⇒ Shape A (only the packaged manifest injects them). Only the `WORDPRESS_DB_*` set ⇒ almost certainly Shape B. `WORDPRESS_DB_HOST` = `wordpress-mariadb` is a further Shape A signal.
+2. **[TCP-mysql]** `MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" -u "${WORDPRESS_DB_USER}" -e "SELECT VERSION()"` — a `-MariaDB` banner is consistent with Shape A (exact version floats — the image is unpinned, so **always check, never assume** the engine version); `8.0.x` matches the Shape B demo.
 3. **[HTTP]** `curl -s "http://${WORDPRESS_HOST}/feed/" | grep -o '<generator>[^<]*'` — code version. `6.9` matches the current packaged pin — the image tag is `wordpress:6.9.0`, but core reports `x.y.0` releases as `x.y` (patch releases like `6.9.1` match exactly); anything else on a packaged deploy means an older/newer image.
-4. **[shell-only — probe first]** `SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — determines whether a shell (and thus wp-cli) exists. **Expect failure on today's images, both shapes.** Full procedure and etiquette in [shell-access.md](shell-access.md).
+4. **[shell-only — probe first]** `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — determines whether a shell (and thus wp-cli) exists. **Expect failure on today's images, both shapes.** Full procedure and etiquette in [shell-access.md](shell-access.md).
 
 If the signals disagree (e.g. `WORDPRESS_SITE_URL` present but MySQL 8 answering), say so to the user and treat the deployment as Shape B for safety — assume nothing reconciles and wp-cli does not exist.
 

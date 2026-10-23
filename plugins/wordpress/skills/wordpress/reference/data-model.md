@@ -5,7 +5,7 @@ A single-site WordPress database is 12 core tables plus whatever plugins add. De
 Everything in this file is **[TCP-mysql]** unless labeled otherwise — it is the channel you always have. Canonical invocation (never put the password in the argument list):
 
 ```bash
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -e "<SQL>"
 ```
 

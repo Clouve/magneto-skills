@@ -2,7 +2,7 @@
 name: odoo
 description: 'Safely operate an Odoo 19.0 ERP install — install/upgrade modules, filestore-aware backups and restores, prod→staging neutralization, database-manager hardening, and diagnosing module/upgrade failures — without corrupting accounting or framework data. Use when the user is running the Clouve Odoo app, mentions "Odoo", `odoo-bin`, `odoo.conf`, the master password, `account.move`, `ir_model_data`, `ir.config_parameter`, the filestore, or `/web/database/manager`. Do not use for generic Python/PostgreSQL/Linux questions that are not tied to an Odoo instance.'
 type: devops
-version: 0.1.2
+version: 0.1.3
 authoredAgainst: odoo 19.0
 ---
 
@@ -53,11 +53,12 @@ Use this skill when the user is working with the Clouve Odoo app, when they ment
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
-- Odoo is reachable at `${ODOO_HOST}:8069`. The Odoo database runs at `${ODOO_DB_HOST}` (PostgreSQL). Both are injected into your environment by the platform — confirm the actual variable names with `compgen -e | grep -i odoo` (names only; never print the values: some of them are passwords) before relying on any specific one.
-- You have an interactive shell in the Odoo and Postgres containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password in `${CLOUVE_OPS_PASSWORD}` (already in your env). Connect with:
+- Odoo is reachable at `${ODOO_HOST}:8069`. The Odoo database runs at `${ODOO_DB_HOST}` (PostgreSQL). Both are injected into your environment by the platform — confirm the actual variable names with `compgen -e | grep -i odoo` (names only), and the passwords' names with `clv-secret --list | grep -i odoo`, before relying on any specific one.
+- Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
+- You have an interactive shell in the Odoo and Postgres containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`. Connect with:
   ```bash
-  SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST}
-  SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST}
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
   ```
   On the first connection add `-o StrictHostKeyChecking=accept-new`: while the host key is unknown, `sshpass` exits 6 without printing anything.
 - `sudo` in these sessions drops the `ODOO_RC` the image sets, so give every `odoo` command its config: `-c /etc/odoo/odoo.conf` for the server, `shell` and `module` commands, `ODOO_RC=/etc/odoo/odoo.conf` in front of `odoo db`. The database's superuser role is `${ODOO_DB_USER}`; there is no `postgres` role, so `psql` and `pg_dump` run as `sudo -u postgres` need `-U ${ODOO_DB_USER}`.

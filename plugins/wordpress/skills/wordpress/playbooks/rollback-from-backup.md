@@ -7,7 +7,7 @@ On today's channels this is almost always a **DB-only rollback**: the dump resto
 ## Preconditions
 
 - [ ] **Backup dump in hand** with its manifest ([reference/backup-restore.md](../reference/backup-restore.md)); you know whether a `wp-content/` archive exists too (today: usually not).
-- [ ] **Env names discovered** (`compgen -e | grep -iE 'wordpress|mysql|maria|host'`); examples assume `WORDPRESS_DB_*`, `WORDPRESS_HOST=wordpress`, default `wp_` prefix.
+- [ ] **Env names discovered** (`compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'` for the passwords); examples assume `WORDPRESS_DB_*`, `WORDPRESS_HOST=wordpress`, default `wp_` prefix.
 - [ ] **Channel inventory done** — SSH probe run; expect TCP + HTTP only on today's images.
 - [ ] **Version fit known**: the dump's `db_version` vs the running code (case matrix in step 4). `zgrep -A2 "option_name.*db_version" backup.sql.gz` or read it after import.
 - [ ] **User ack recorded** — per the gates in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow): print the exact restore command, spell out the data-loss window (backup timestamp → now), and wait for the literal phrase `yes, I understand this is irreversible`.
@@ -21,13 +21,13 @@ Even though you're restoring, keep what's there now — you may need it for diag
 ```bash
 ts=$(date +%Y%m%d-%H%M%S); out="$HOME/forensic-$ts"; mkdir -p "$out"
 
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysqldump -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqldump -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
     --single-transaction --quick --default-character-set=utf8mb4 \
     "$WORDPRESS_DB_NAME" | gzip > "$out/db-broken.sql.gz"
 
 curl -sSI "http://${WORDPRESS_HOST}/" > "$out/homepage-headers.txt"
 curl -sS  "http://${WORDPRESS_HOST}/feed/" | grep -o '<generator>[^<]*</generator>' > "$out/generator.txt" || true
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME" -sN \
     -e "SELECT option_value FROM wp_options WHERE option_name='active_plugins';" > "$out/active_plugins.txt"
 ls -la "$out"
 ```
@@ -42,7 +42,7 @@ ls -la "$out"
 Print this command and get the ack (precondition 5) **before** running it:
 
 ```bash
-gunzip -c "$HOME/backups/wordpress-<ts>.sql.gz" | MYSQL_PWD="$WORDPRESS_DB_PASSWORD" \
+gunzip -c "$HOME/backups/wordpress-<ts>.sql.gz" | MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" \
     mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" "$WORDPRESS_DB_NAME"
 ```
 
@@ -56,7 +56,7 @@ SELECT option_value FROM wp_options WHERE option_name='db_version';
 ```bash
 # 3b. Leftover tables created AFTER the backup (e.g. by a since-installed plugin) survive
 #     the import. List and compare against the manifest:
-MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
     "$WORDPRESS_DB_NAME" -e "SHOW TABLES;"
 ```
 

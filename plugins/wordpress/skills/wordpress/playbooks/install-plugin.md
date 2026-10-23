@@ -38,8 +38,9 @@ Record what is active now, so you can diff after and so you have the value to re
 
 ```bash
 compgen -e | grep -iE 'wordpress|mysql|maria|host'   # names only: the DB variables and the sibling host
+clv-secret --list | grep -iE 'wordpress|mysql|maria|host'   # the passwords' names
 
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT option_value FROM wp_options WHERE option_name='active_plugins';"
 ```
@@ -60,7 +61,7 @@ Snag to warn them about up front: on the Clouve-packaged shape the entrypoint on
 
 ```bash
 # 1. The plugin now appears in active_plugins as "<slug>/<slug>.php":
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD}" mysql -h "${WORDPRESS_DB_HOST}" \
+MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
   -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" -N -e \
   "SELECT option_value FROM wp_options WHERE option_name='active_plugins';"
 
@@ -76,7 +77,7 @@ Also confirm, over the user's browser or HTTP, that the plugin's own settings pa
 Only if the `clouve-ops` probe succeeds:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
   -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
   "wp --path=/var/www/html plugin install '<slug>' --activate --allow-root"
 ```
@@ -84,7 +85,7 @@ SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
 **Post-install ownership caveat (Shape A).** `--allow-root` writes the new plugin files as **root**, but the entrypoint only re-chowns `wp-content/uploads/` on boot — so these root-owned files persist and will later block `www-data`-driven updates or auto-updates of that plugin. Re-chown after installing:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
   -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
   "chown -R www-data:www-data /var/www/html/wp-content/plugins/<slug>"
 ```

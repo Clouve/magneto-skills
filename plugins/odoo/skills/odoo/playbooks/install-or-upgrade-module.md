@@ -7,7 +7,7 @@ Odoo keeps serving through the whole procedure. You don't stop it, and you don't
 ## Preconditions
 
 - [ ] For a third-party module: you have the module source and have read `__manifest__.py` plus every top-level Python file (security posture: third-party addons run arbitrary Python with full DB access — see [reference/module-lifecycle.md](../reference/module-lifecycle.md#third-party-addons--security-posture)). Modules that ship with Odoo live in `/usr/lib/python3/dist-packages/odoo/addons` and skip this check and step 2.
-- [ ] You can reach the Odoo container via SSH: `SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST}`.
+- [ ] You can reach the Odoo container via SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST}`.
 - [ ] You know the exact database name (`<db>`, normally `${ODOO_DB_NAME}`) and module technical name (`<mod>`).
 
 ## Steps
@@ -15,7 +15,7 @@ Odoo keeps serving through the whole procedure. You don't stop it, and you don't
 ### 1. Take a backup (GATE — do not continue without this)
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
   "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
@@ -32,21 +32,21 @@ GATE: Confirm backup completed and artifact path noted. Type "backup confirmed" 
 Third-party modules go in `/mnt/extra-addons`, the custom-modules volume. `odoo.conf` lists it in `addons_path` as the pattern `/mnt/extra-addons*`, which Odoo checks each time it starts: it skips the folder while no module is in it and loads it once one is (see [reference/configuration.md](../reference/configuration.md#this-images-conf-template)).
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "ls /mnt/extra-addons/<mod>/"
 ```
 
 If the directory is missing, or holds an older version, copy the module folder over the SSH channel (there is no `kubectl` in this container):
 
 ```bash
-tar -C /path/to/parent-folder -cf - <mod> | SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+tar -C /path/to/parent-folder -cf - <mod> | SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo tar -C /mnt/extra-addons -xf - && sudo chown -R odoo:odoo /mnt/extra-addons/<mod>"
 ```
 
 The running server reads module folders and Python code only when it starts, so restart it now, before step 3. Odoo is PID 1 in its container and re-executes itself on `SIGHUP`, inside the same container:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   'grep -q odoo /proc/1/cmdline && sudo kill -HUP 1'
 for i in $(seq 1 30); do
   sleep 2
@@ -61,14 +61,14 @@ The container keeps running, and so does your SSH access. Odoo is back within a 
 **To install:**
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo module install -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 
 **To upgrade:**
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo module upgrade -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 
@@ -79,7 +79,7 @@ A wrong module name installs nothing and prints no error, so always check step 4
 The classic flags do the same job and also work while Odoo runs:
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo -c /etc/odoo/odoo.conf -d <db> -i <mod> --stop-after-init"   # -u <mod> to upgrade
 ```
 
@@ -90,7 +90,7 @@ Checked on Odoo 19 on 2026-10-20: installing `crm` with `-i` took 8 seconds whil
 ### 4. Verify the module state
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
 result = env['ir.module.module'].search([('name', '=', '<mod>')])
 print(result.mapped(lambda m: (m.name, m.state, m.latest_version)))
@@ -115,7 +115,7 @@ proceeding.
 ```
 
 ```bash
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
   "sudo odoo module uninstall -c /etc/odoo/odoo.conf -d <db> <mod>"
 ```
 

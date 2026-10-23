@@ -2,14 +2,14 @@
 
 ## clouve-ops SSH channel
 
-Both the Odoo container and the Postgres container expose an SSH server accepting the `clouve-ops` user. The password is the per-pod secret in `$CLOUVE_OPS_PASSWORD` (already in the agent environment).
+Both the Odoo container and the Postgres container expose an SSH server accepting the `clouve-ops` user. The password is the per-pod secret `CLOUVE_OPS_PASSWORD`. It isn't in your environment on current agents, so a command fetches it with `${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}`.
 
 ```bash
 # Connect to Odoo container (odoo-bin, filestore, conf, addons)
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST}
 
 # Connect to PostgreSQL container (OS-level postgres ops)
-SSHPASS="$CLOUVE_OPS_PASSWORD" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_DB_HOST}
 ```
 
 On first connection, add `-o StrictHostKeyChecking=accept-new`: `sshpass` can't answer the yes/no host-key prompt, so it exits 6 without printing anything. Subsequent connections reuse the known-hosts entry.
@@ -23,7 +23,7 @@ On first connection, add `-o StrictHostKeyChecking=accept-new`: `sshpass` can't 
 | Run `odoo-bin`, read/edit `odoo.conf`, inspect filestore, restart service | SSH → Odoo container |
 | Postgres OS ops: `pg_dump`, `pg_restore`, `psql` without TCP auth | SSH → Postgres container, then `sudo -u postgres psql -U ${ODOO_DB_USER}` (the superuser role is `${ODOO_DB_USER}`; there is no `postgres` role) |
 | ORM-driven data fixes, module inspection, scripted record updates | `odoo shell` (see below) — avoids raw SQL pitfalls |
-| Simple `SELECT` or schema inspection from agent environment | TCP `psql -h ${ODOO_DB_HOST} -U odoo -d <db>` (password in `$ODOO_DB_PASSWORD`) |
+| Simple `SELECT` or schema inspection from agent environment | TCP `psql -h ${ODOO_DB_HOST} -U odoo -d <db>` (password in `ODOO_DB_PASSWORD`) |
 
 ## `odoo shell`
 
