@@ -25,8 +25,8 @@
 # SECRET, SECRETS, KEY, KEYS, TOKEN, TOKENS, CREDENTIAL, CREDENTIALS, PRIVATE, AUTH.
 # MAGNETO_AGENT_LLM_KEY, ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are the exceptions.
 # Case doesn't matter, so db_password and Gibbon_Db_Password are secrets too.
-# An agent-side secret also starts with CLOUVE_OPS_, GIBBON_, MOODLE_, ODOO_, WORDPRESS_
-# or AI_STUDIO_. A name without one of those (DB_PASSWORD, MYSQL_ROOT_PASSWORD,
+# An agent-side secret also starts with CLOUVE_OPS_, GIBBON_, MOODLE_, NEXTCLOUD_, ODOO_,
+# WORDPRESS_ or AI_STUDIO_. A name without one of those (DB_PASSWORD, MYSQL_ROOT_PASSWORD,
 # MYSQL_PWD) belongs to a sibling or is a script's own copy, so it stays as written.
 # is_secret_name and is_agent_side_secret below are that rule. Keep them in step with
 # _clv_is_secret_name in magneto-agent's image/installer/secrets/secrets-lib.sh.
@@ -91,7 +91,7 @@ is_secret_name() { # NAME: one of its _-separated words is a secret word, in any
 
 is_agent_side_secret() { # NAME: a secret name with an agent-side prefix
   case "$1" in
-    CLOUVE_OPS_* | GIBBON_* | MOODLE_* | ODOO_* | WORDPRESS_* | AI_STUDIO_*) is_secret_name "$1" ;;
+    CLOUVE_OPS_* | GIBBON_* | MOODLE_* | NEXTCLOUD_* | ODOO_* | WORDPRESS_* | AI_STUDIO_*) is_secret_name "$1" ;;
     *) return 1 ;;
   esac
 }
@@ -118,7 +118,7 @@ rel() { printf '%s' "${1#"$ROOT"/}"; }
 
 # A candidate is anything with an agent-side prefix after a `$` or `${`. The functions
 # above decide which of them are secrets.
-prefixes='CLOUVE_OPS|GIBBON|MOODLE|ODOO|WORDPRESS|AI_STUDIO'
+prefixes='CLOUVE_OPS|GIBBON|MOODLE|NEXTCLOUD|ODOO|WORDPRESS|AI_STUDIO'
 
 # --- No printenv of a secret --------------------------------------------------
 
@@ -295,7 +295,7 @@ fi
 # learnings.md keeps secrets out, and names the variable without an expansion.
 bad=""
 checked=0
-for f in "$ROOT"/plugins/{gibbon,moodle,odoo,wordpress}/skills/*/learnings.md; do
+for f in "$ROOT"/plugins/{gibbon,moodle,nextcloud,odoo,wordpress}/skills/*/learnings.md; do
   checked=$((checked + 1))
   line="$(grep -F 'Secrets. Ever.' "$f" 2>/dev/null || true)"
   if [[ "$line" != *'`CLOUVE_OPS_PASSWORD`'* || "$line" == *'$'* ]]; then
