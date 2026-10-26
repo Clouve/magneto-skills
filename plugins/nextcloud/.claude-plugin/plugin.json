@@ -1,0 +1,9 @@
+{
+  "name": "nextcloud",
+  "version": "0.1.0",
+  "description": "Safely run a Nextcloud 35 file sync and share server on Clouve through occ over the clouve-ops SSH channel. It covers staff accounts and groups, Team folders, sharing and links, quotas, Nextcloud apps, email setup, backups and restores, setup warnings, background jobs, stuck upgrades and maintenance mode, and slow or broken pages. Use when the user runs the Clouve Nextcloud app or mentions \"Nextcloud\", `occ`, `config.php` in `/var/www/html/config`, Team folders or groupfolders, WebDAV, CalDAV or CardDAV sync, share links, or `oc_*` tables. Do not use for ownCloud, or for generic PHP, Apache or MySQL questions that aren't tied to a Nextcloud instance.",
+  "author": {
+    "name": "Clouve",
+    "url": "https://clouve.com"
+  }
+}

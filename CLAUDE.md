@@ -85,7 +85,7 @@ The `:` keeps it safe under `set -e`. A plain `NAME=$(clv-secret NAME)` ends the
 
 ### Which names
 
-A name is a secret when one of its `_`-separated words is PASSWORD, PASSWORDS, PASSWD, PASS, PWD, SECRET, SECRETS, KEY, KEYS, TOKEN, TOKENS, CREDENTIAL, CREDENTIALS, PRIVATE or AUTH. `MAGNETO_AGENT_LLM_KEY`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are the exceptions. The agent-side ones start with `CLOUVE_OPS_`, `GIBBON_`, `MOODLE_`, `ODOO_`, `WORDPRESS_` or `AI_STUDIO_`. A name without one of those prefixes (`DB_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `MYSQL_PWD`) is a sibling's own, or a script's local copy, and stays as written.
+A name is a secret when one of its `_`-separated words is PASSWORD, PASSWORDS, PASSWD, PASS, PWD, SECRET, SECRETS, KEY, KEYS, TOKEN, TOKENS, CREDENTIAL, CREDENTIALS, PRIVATE or AUTH. `MAGNETO_AGENT_LLM_KEY`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are the exceptions. The agent-side ones start with `CLOUVE_OPS_`, `GIBBON_`, `MOODLE_`, `NEXTCLOUD_`, `ODOO_`, `WORDPRESS_` or `AI_STUDIO_`. A name without one of those prefixes (`DB_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `MYSQL_PWD`) is a sibling's own, or a script's local copy, and stays as written.
 
 The SKILL.md of a plugin that uses secrets says in its environment section that passwords aren't in the environment, shows the form above, and names `clv-secret --list`. A step that lists names with `compgen -e | grep` gets a `clv-secret --list | grep` line for the passwords.
 
