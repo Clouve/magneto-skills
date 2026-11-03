@@ -21,28 +21,18 @@ On Clouve, `admin_passwd` comes from `ODOO_MASTER_PASSWORD`, a random secret Clo
 ```bash
 # Prints two counts. "1" then "0": set, and not 'admin'. A second "1": still 'admin'.
 # A first "0": missing, so Odoo falls back to 'admin'.
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo grep -c '^admin_passwd' /etc/odoo/odoo.conf; sudo grep -cE '^admin_passwd *= *admin *$' /etc/odoo/odoo.conf || true"
 ```
 
 Never `cat` or `grep` the `admin_passwd` line itself: on this image it holds the master password in plain text.
 
-If it is the default, change it immediately. The deployment's App Configuration is read-only once deployed, so neither you nor the tenant can change `ODOO_MASTER_PASSWORD` from the dashboard. Change it in the running instance:
+If it is the default, it has to change now. The deployment's App Configuration is read-only once deployed, so neither you nor the tenant can change `ODOO_MASTER_PASSWORD` from the dashboard. The tenant changes it in the running instance, on Odoo's own database manager page:
 
-**Via `odoo shell`** (verified against `odoo/service/db.py:408-411`):
+1. Open `https://<their Odoo>/web/database/manager` and choose **Set Master Password**.
+2. If the dialog asks for the current master password, enter `admin`. While the password is still the default, Odoo may fill that field in itself and hide it. Then enter a new, strong one, and keep it in a password manager.
 
-The real function is `exp_change_admin_password(new_password)` — single argument, no old password:
-
-```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
-  "sudo odoo shell -c /etc/odoo/odoo.conf -d <db> --no-http <<'EOF'
-import odoo.service.db as db_svc
-db_svc.exp_change_admin_password('NEW_STRONG_PASSWORD_HERE')
-# No env.cr.commit() needed — this writes odoo.conf directly via config.save(['admin_passwd'])
-EOF"
-```
-
-Note: `exp_change_admin_password` takes ONE argument (the new password only). It calls `config.set_admin_password(new_password)` then `config.save(['admin_passwd'])`, writing the hashed value to `odoo.conf` directly — it does NOT touch the database. The running server read `odoo.conf` when it started, so restart Odoo in its container afterwards (`SIGHUP`, see [reference/stack-and-runtime.md](../reference/stack-and-runtime.md#restarting-odoo)) to load the new value. The next time the container itself starts, the entrypoint writes `ODOO_MASTER_PASSWORD` back into `odoo.conf`, so tell the tenant the change lasts until then.
+Never make up the new password yourself, ask for it, or put it in a command: anything you put in a command shows in this chat, and a remote command also shows in the Odoo container's process list. The page calls Odoo's `exp_change_admin_password()` (`odoo/service/db.py`), which hashes the new password into the running server's config and saves it to `odoo.conf` (the entrypoint makes that file the `odoo` user's), so no restart is needed. Then check it with the two counts above: `1` and `0`. The next time the container itself starts, the entrypoint writes `ODOO_MASTER_PASSWORD` back into `odoo.conf`, so tell the tenant the change lasts until then, and that a lasting fix is a support ticket asking Clouve to set `ODOO_MASTER_PASSWORD`.
 
 ### 2. Set `list_db=False` and pin `db_name`
 
@@ -61,7 +51,7 @@ db_name = myproductiondb
 Verify the config is active:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo grep -E 'list_db|db_name|dbfilter' /etc/odoo/odoo.conf"
 ```
 

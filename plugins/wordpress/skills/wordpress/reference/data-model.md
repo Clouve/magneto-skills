@@ -81,7 +81,7 @@ The URL is now 30 bytes but the prefix still says `s:29:` — `unserialize()` re
 Rules ([SKILL.md](../SKILL.md) principle 6):
 
 - A value starting `a:`, `s:`, `O:`, `i:`, or `b:` followed by a number/colon is serialized — **never** string-`REPLACE` across it.
-- Length-aware search-replace is `wp search-replace --dry-run` — **[shell-only — probe first]**, unreachable today. Without a shell there is no safe bulk rewrite of serialized data over TCP; say so and scope the work to plain scalar rows, or route.
+- Length-aware search-replace is `wp search-replace --dry-run` — **[shell-only — probe first]**, over the shell on Shape A ([playbooks/change-site-url.md](../playbooks/change-site-url.md) has the full command). Without a shell there is no safe bulk rewrite of serialized data over TCP; say so and scope the work to plain scalar rows, or route.
 - The one safe serialized *write* is a **known constant**: `a:0:{}` (the empty array) into `active_plugins` for WSOD isolation — after `SELECT`ing and saving the current value so it can be restored (gated).
 
 ## NEVER touch (no direct `UPDATE` / `DELETE` / `INSERT`)
@@ -113,22 +113,19 @@ Rule of thumb: if a table holds something a human typed, uploaded, or paid for �
 
 ## The `user_pass` MD5-upgrade fallback
 
-Standard, documented WordPress behavior: `wp_users.user_pass` normally holds a modern hash (bcrypt since WP 6.8; phpass before), but WordPress **accepts a plain MD5 value and transparently re-hashes it to the modern scheme on the user's next successful login**. That makes a TCP-only password reset possible — the fallback for "lost admin access" when no shell exists:
+Standard, documented WordPress behavior: `wp_users.user_pass` normally holds a modern hash (bcrypt since WP 6.8; phpass before), but WordPress **accepts a plain MD5 value and transparently re-hashes it to the modern scheme on the user's next successful login**. That makes a TCP-only password reset possible, the fallback for "lost admin access" without a shell (Shape B, or a failed probe). Run it with [scripts/temp-password.sh](../scripts/temp-password.sh) `--via-db`, never by hand. The script makes the password, saves it to a private file, and sends `UPDATE wp_users SET user_pass = MD5('<the password>') WHERE ID = <ID>` to mysql on its standard input. A password you type into a statement yourself lands in the chat and, with `mysql -e`, in the process list.
 
 ```sql
--- 1. Verify exactly one target row (also confirms the username with the user):
+-- Verify exactly one target row first (it also confirms the username with the user):
 SELECT ID, user_login, user_email FROM wp_users WHERE user_login = 'the_admin';
-
--- 2. Print this, get the ack, then run:
-UPDATE wp_users SET user_pass = MD5('a-strong-temp-pass') WHERE user_login = 'the_admin';
 ```
 
-**Gate** (per [SKILL.md](../SKILL.md)): confirm the username, confirm the requester actually controls that account (contactable at `user_email`), print the exact `UPDATE`, and wait for the ack. Then:
+**Gate** (per [SKILL.md](../SKILL.md)): confirm the username, confirm the requester actually controls that account (contactable at `user_email`), show the exact command, and wait for the ack. Then:
 
-- The value sits as weak MD5 until the next login — do this just-in-time, use a strong temp password, and have the user log in immediately and change it in their profile.
-- Existing login cookies for that user die with the change — auth cookies embed a fragment of the stored hash (general WP knowledge) — which is usually a feature when you're resetting a possibly-compromised account.
-- On Shape A the platform-injected `WORDPRESS_ADMIN_PASSWORD` env will **not** reflect this change — note that to the user (see [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md)).
-- With a shell instead: **[shell-only — probe first]** `wp user update the_admin --user_pass='…' --path=/var/www/html --allow-root` — same gate.
+- The value sits as weak MD5 until the next login. The script's sign-in check logs in once, which upgrades it straight away; if that check doesn't confirm it, have the user log in promptly and change the password in their profile.
+- Existing login cookies for that user die with the change, since auth cookies embed a fragment of the stored hash (general WP knowledge). That is usually a feature when you're resetting a possibly-compromised account.
+- On Shape A the platform-injected `WORDPRESS_ADMIN_PASSWORD` env will **not** reflect this change. Tell the user (see [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md)).
+- With a shell instead (Shape A): **[shell-only — probe first]** the same script without `--via-db` runs `wp user update` with the password on its standard input, as [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md) Step 2 shows. Same gate.
 
 ## Quick diagnostic reads
 

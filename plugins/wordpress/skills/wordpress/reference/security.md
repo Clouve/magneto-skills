@@ -4,9 +4,9 @@ A working hardening posture for a WordPress 6.x site on Clouve. Treat this as a 
 
 ## First thing to know: what you can actually touch from here
 
-This skill's defining constraint is the channel matrix. From the Magneto Agent container you have **[TCP-mysql]** to the database sibling and **[HTTP]** `curl` to the WordPress sibling on :80. A shell *inside* the WordPress container — and therefore `wp-cli` and any `wp-config.php`/file edit — exists only if the sibling image ships the `clouve-ops` SSH account, which today's WordPress images do **not**. Probe before you plan ([shell-access.md](shell-access.md)); most of the hardening controls below live in files and are therefore **recommend-and-route** today, not fix-it-yourself.
+This skill's defining constraint is the channel matrix. From the Magneto Agent container you have **[TCP-mysql]** to the database sibling and **[HTTP]** `curl` to the WordPress sibling on :80. A shell *inside* the WordPress container — and therefore `wp-cli` and any `wp-config.php`/file edit — exists when the sibling image ships the `clouve-ops` SSH account: both Shape A images do, and Shape B's stock image doesn't. Probe before you plan ([shell-access.md](shell-access.md)). Most of the hardening controls below live in files. On Shape A you can apply the `wp-config.php` ones over the shell, under the wp-config gate; on Shape B, or after a failed probe, they are **recommend-and-route**, not fix-it-yourself.
 
-| Concern | Detect from agent? | Fix from agent today? |
+| Concern | Detect from agent? | Fix from agent without a shell? |
 |---|---|---|
 | User / login enumeration (`?author=`, REST `/users`) | **[HTTP]** yes | No — needs a plugin or code (file channel) → route |
 | `xmlrpc.php` exposed | **[HTTP]** yes | No — server config, plugin, or filter (file channel) → route |
@@ -17,11 +17,13 @@ This skill's defining constraint is the channel matrix. From the Magneto Agent c
 | Stale core / plugins | **[HTTP]** version fingerprint | Core is image-driven; plugins via `/wp-admin` → guide the user |
 | Salts need rotating | No | No — `wp-config.php` edit (file channel) → route |
 
+On Shape A the shell opens up some of these rows: `DISALLOW_FILE_EDIT` and the salts become gated wp-cli edits (below), and where the fix is a plugin, you can install a vetted one yourself ([../playbooks/install-plugin.md](../playbooks/install-plugin.md), Path B). The web-server rows stay with the image.
+
 "Route" means: state the finding plainly, tell the user the exact thing to click in `/wp-admin` or the exact `wp-config.php`/server change, and — where warranted — surface it as a platform request. It does **not** mean improvise the change through the database. See SKILL.md principle 13 (Clouve doesn't see the inside of this container).
 
 ## Login / user enumeration — [HTTP], fully checkable
 
-WordPress leaks usernames through two public surfaces. Both are HTTP-checkable without auth; neither is fixable from the agent today.
+WordPress leaks usernames through two public surfaces. Both are HTTP-checkable without auth; neither is fixable through the database.
 
 Discover the sibling host first (`compgen -e | grep -iE 'wordpress|host'`; the passwords' names are in `clv-secret --list | grep -iE 'wordpress|host'`), then:
 
@@ -43,7 +45,7 @@ curl -s "http://${WORDPRESS_HOST}/?rest_route=/wp/v2/users" | head -c 400   # pl
 # permalinks, not hardening; confirm with ?rest_route= before concluding it is blocked.
 ```
 
-Username disclosure turns a login page into a targeted brute-force surface — the attacker now needs only the password. **The fix is code, not data**: a `rest_endpoints` filter to unset the users route, an author-archive redirect block, and (best) a login-attempt limiter. Those ship as a security/hardening plugin or an `mu-plugin` — installed from `/wp-admin` or by editing files, i.e. a file channel. Route the user to install a reputable limit-login / hardening plugin; do **not** attempt to synthesize the block through SQL.
+Username disclosure turns a login page into a targeted brute-force surface — the attacker now needs only the password. **The fix is code, not data**: a `rest_endpoints` filter to unset the users route, an author-archive redirect block, and (best) a login-attempt limiter. Those ship as a security/hardening plugin or an `mu-plugin` — installed from `/wp-admin` or by editing files, i.e. a file channel. On Shape A you can install one over the shell once the user has picked it ([../playbooks/install-plugin.md](../playbooks/install-plugin.md), Path B); otherwise route the user to install a reputable limit-login / hardening plugin. Do **not** attempt to synthesize the block through SQL.
 
 ## `xmlrpc.php` — [HTTP] probe, file-channel to disable
 
@@ -104,16 +106,16 @@ define( 'DISALLOW_FILE_EDIT', true );
 
 This removes those editors entirely. It lives in `wp-config.php`, so it needs a file channel:
 
-- **With a shell** (Shape A, only when a `clouve-ops` account exists): `wp config set DISALLOW_FILE_EDIT true --raw --allow-root`, then re-chown any root-owned files it touched (the entrypoint only re-chowns `wp-content/uploads`).
-- **Without a shell** (today): there is no live path from the agent — it cannot be set over the DB or HTTP. Recommend it and route: either the user adds the line via a file manager / next image build, or they use a hardening plugin that offers the same toggle.
+- **With a shell** (Shape A): `sudo -u www-data wp --path=/var/www/html config set DISALLOW_FILE_EDIT true --raw` over SSH, under the wp-config gate. Run as `www-data`, it leaves no root-owned files behind.
+- **Without a shell** (Shape B, or a failed probe): there is no live path from the agent — it cannot be set over the DB or HTTP. Recommend it and route: either the user adds the line via a file manager / next image build, or they use a hardening plugin that offers the same toggle.
 
 There is no clean HTTP signal for whether it is set (the editor menu only shows to an authenticated admin), so treat this as a recommend-and-verify item, not a detect-and-confirm one.
 
 ## Uploads executing PHP — server-level, usually out of reach
 
-The classic post-upload escalation: an attacker gets a `.php` file into `wp-content/uploads/` (via a vulnerable plugin's uploader) and then requests it directly to run code. The durable fix is to make the web server **refuse to execute PHP under `uploads/`** — an Apache `<Directory>` / `.htaccess` `php_admin_flag engine off` or an nginx `location ~* /uploads/.*\.php$ { deny all; }`. That is web-server configuration, below WordPress and below the agent's reach on both shapes.
+The classic post-upload escalation: an attacker gets a `.php` file into `wp-content/uploads/` (via a vulnerable plugin's uploader) and then requests it directly to run code. The durable fix is to make the web server **refuse to execute PHP under `uploads/`** — an Apache `<Directory>` / `.htaccess` `php_admin_flag engine off` or an nginx `location ~* /uploads/.*\.php$ { deny all; }`. That is web-server configuration, which belongs to the image: even on Shape A, where the shell reaches the container, an edit under `/etc/apache2` is gone at the next container start (only `/var/www/html` is on a volume).
 
-You can do a shallow **[HTTP]** sanity probe — try to fetch a known-nonexistent PHP path under uploads and confirm it is not silently executed — but you cannot prove the negative from outside, and you cannot apply the fix. Recommend the web-server rule and route it to the image/platform. Pair the recommendation with the real mitigation the user *can* act on: keep plugins current (below), since the upload almost always arrives through a stale plugin CVE.
+You can do a shallow **[HTTP]** sanity probe — try to fetch a known-nonexistent PHP path under uploads and confirm it is not silently executed — but you cannot prove the negative from outside, and you cannot apply a lasting fix from here. Recommend the web-server rule and route it to the image/platform. Pair the recommendation with the real mitigation the user *can* act on: keep plugins current (below), since the upload almost always arrives through a stale plugin CVE.
 
 ## Secret keys and salts — file channel; rotating logs everyone out
 
@@ -123,7 +125,7 @@ The eight `AUTH_KEY` / `SECURE_AUTH_KEY` / `LOGGED_IN_KEY` / `NONCE_KEY` and mat
 - All in-flight nonces are invalidated → open forms / AJAX fail until the page is reloaded.
 - Stored passwords are **not** affected (they are hashed separately in `wp_users.user_pass`).
 
-Rotation is a `wp-config.php` edit — there is **no** database or HTTP path for it. With a shell, `wp config shuffle-salts --allow-root` regenerates all eight in place. Without one (today), it is recommend-and-route: the user regenerates them via the [wordpress.org secret-key API](https://api.wordpress.org/secret-key/1.1/salt/) into `wp-config.php` on the next image build, or a security plugin does it. Because it force-logs-out everyone, treat it as a coordinated action, not a quiet fix — tell the user before it happens.
+Rotation is a `wp-config.php` edit — there is **no** database or HTTP path for it. With the shell (Shape A), `sudo -u www-data wp --path=/var/www/html config shuffle-salts` regenerates all eight in place, under the wp-config gate. Without one (Shape B, or a failed probe), it is recommend-and-route: the user regenerates them via the [wordpress.org secret-key API](https://api.wordpress.org/secret-key/1.1/salt/) into `wp-config.php` on the next image build, or a security plugin does it. Because it force-logs-out everyone, treat it as a coordinated action, not a quiet fix — tell the user before it happens.
 
 ## Update hygiene
 
@@ -156,6 +158,6 @@ You can triage a fair amount without a shell; forensics on files needs one and i
 3. **Tampered active plugin set** — `SELECT option_value FROM wp_options WHERE option_name='active_plugins';` and confirm every entry is a plugin the user knows about.
 4. **New users generally** — `SELECT ID, user_login, user_email, user_registered FROM wp_users ORDER BY user_registered DESC LIMIT 20;`
 5. **[HTTP]** spot-check that the homepage and `/wp-login.php` return the expected 200 / login form and haven't been defaced or made to redirect off-site (`curl -sI`).
-6. **File-level checks** (webshells under `uploads/`, modified core files, an injected `mu-plugin`) require a shell — **route them**: there is no honest DB/HTTP substitute for scanning the filesystem.
+6. **File-level checks** (webshells under `uploads/`, modified core files, an injected `mu-plugin`) require a shell. On Shape A, look without changing anything: `sudo find /var/www/html/wp-content/uploads -name '*.php'` over SSH lists PHP files where only media belongs. Without a shell, **route them**: there is no honest DB/HTTP substitute for scanning the filesystem.
 
 Before touching anything, take a forensic backup (DB dump + `wp-content/` where a file channel exists — [../scripts/backup.sh](../scripts/backup.sh)); don't `rm` evidence. Rotating salts (above) and every admin password ([../playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md)) are the two containment actions you *can* take from here. Anything past triage is a forensic engagement — surface it to Clouve ops and the site owner with what you found.

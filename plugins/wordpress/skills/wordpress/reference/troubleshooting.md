@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Failure modes seen in the wild and the **first** thing to check for each. Stop after one diagnostic step — if the answer isn't obvious, escalate the diagnosis flow rather than running 5 tools at once. Every probe is channel-labeled ([reference/shell-access.md](shell-access.md)); remember there is **no shell and no wp-cli** on today's WordPress deployments, so each entry gives the live TCP/HTTP path and says plainly when only a file channel or support can finish the job.
+Failure modes seen in the wild and the **first** thing to check for each. Stop after one diagnostic step — if the answer isn't obvious, escalate the diagnosis flow rather than running 5 tools at once. Every probe is channel-labeled ([reference/shell-access.md](shell-access.md)); on Shape A the shell and wp-cli are there once the probe passes, and on Shape B they aren't, so each entry gives the TCP/HTTP path and says plainly when only a file channel or support can finish the job.
 
 `${WORDPRESS_HOST}` / `${WORDPRESS_DB_*}` below are the discovered names. Run `compgen -e | grep -iE 'wordpress|mysql|maria|host'` first, and `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'` for the passwords' names.
 
@@ -48,7 +48,7 @@ Usually a scheme/host mismatch between what WordPress thinks it is (`siteurl`/`h
 
 ## 500 right after a plugin update
 
-The most common 500 there is. The plugin's new code fatals on load; because there's no shell, you cannot read the fatal — go straight to evidence-then-isolate:
+The most common 500 there is. The plugin's new code fatals on load. On Shape A you can read the fatal from WordPress's debug log over the shell ([playbooks/diagnose-500.md](../playbooks/diagnose-500.md), Step 1); without a shell you cannot, so go straight to evidence-then-isolate:
 
 1. **[HTTP]** Confirm scope: front page vs `/wp-login.php` vs a static asset (see the ladder's Step 2).
 2. **[TCP-mysql]** Read **and save** the plugin list, then — gated ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): "Deactivate all plugins") — write the empty list. Full procedure with the exact SQL: [playbooks/diagnose-500.md](../playbooks/diagnose-500.md) Step 4.
@@ -67,7 +67,7 @@ Two distinct causes — check which you have before touching anything:
    # [HTTP] Do they actually serve?
    curl -sI "http://${WORDPRESS_HOST}/wp-content/uploads/<path-from-guid>"
    ```
-   All 404 → the uploads tree is missing/stale. Recovery needs the file half of a backup restored — a file channel you don't have; route per [reference/backup-restore.md](backup-restore.md) and support.
+   All 404 → the uploads tree is missing/stale. Recovery needs the file half of a backup restored: over the shell on Shape A, from a `wp-content` archive ([playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md), step 5); without a shell, route per [reference/backup-restore.md](backup-restore.md) and support.
 2. **Uploads permissions** — *new* uploads fail while old media serves. On Shape A the entrypoint re-chowns `wp-content/uploads` to `www-data` on **every boot**, so a platform-side pod restart is the no-shell fix; if uploads still fail after a restart, escalate. On Shape B no reconciler exists — a perms fix needs a file channel; route to support.
 
 ## Lost admin access
@@ -78,14 +78,14 @@ Two distinct causes — check which you have before touching anything:
    ```
 2. **Shape A**: the platform injected `WORDPRESS_ADMIN_USER` / `WORDPRESS_ADMIN_PASSWORD` at install. Those env values are the *initial* credentials — a manual change in `/wp-admin` is **not** reflected back into env, so a stale env password proves nothing. Never print the password env var into chat.
 3. Password-reset email requires working outbound mail — not guaranteed from these pods; try it, don't rely on it.
-4. The live no-shell reset is the documented MD5 fallback — WordPress accepts an MD5 hash in `wp_users.user_pass` and upgrades it on next login. It is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): confirm the username, confirm the user is contactable, print the exact SQL, get ack): see [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md). With a (future) shell, `wp user update <login> --user_pass=...` is the better tool.
+4. The live no-shell reset is the documented MD5 fallback: WordPress accepts an MD5 hash in `wp_users.user_pass` and upgrades it on next login. With the shell (Shape A), `wp user update` is the better tool. Either way it is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): confirm the username, confirm the user is contactable, show the exact command, get ack), and it runs through [scripts/temp-password.sh](../scripts/temp-password.sh) (`--via-db` for the MD5 fallback) as [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md) shows, so the new password never reaches the chat or a command line.
 
 ## Stuck in maintenance mode
 
 Symptom: every page is `503` with *"Briefly unavailable for scheduled maintenance. Check back in a minute."* — an interrupted core/plugin update left `.maintenance` in the docroot.
 
 - Core writes a timestamp into the file and ignores it once it's roughly 10 minutes old, so most "stuck" states self-clear — **[HTTP]** re-probe after 10 minutes before doing anything.
-- If it persists past that, removing the file needs a file channel — which doesn't exist today. Options, in order: wait out one more probe cycle, platform-side pod restart (Shape A's docroot is a persistent volume, so a restart does **not** reliably remove the file — say so honestly), support ticket.
+- If it persists past that, remove it over the shell on Shape A, with the user's ack: `sudo rm /var/www/html/.maintenance` **[shell-only — probe first]**. Without a shell, the options are, in order: wait out one more probe cycle, platform-side pod restart (Shape A's docroot is a persistent volume, so a restart does **not** reliably remove the file — say so honestly), support ticket.
 - Then find out *which* update was interrupted before it gets retried blind — see [reference/upgrade.md](upgrade.md).
 
 ## Memory exhaustion
@@ -119,7 +119,7 @@ Out of skill scope — that's a Clouve platform / pod networking issue, not a Wo
 ## When to escalate to Clouve ops
 
 - Anything needing a pod restart, env-var change, storage, resources, or ingress — you can't do these, and capacity is paid (principle 11).
-- Anything whose fix needs a file channel that doesn't exist: `.maintenance` removal, `wp-config.php` edits, uploads perms on Shape B, restoring the `wp-content/` half of a backup, reading fatals.
+- Anything whose fix needs a file channel you don't have (Shape B, or a failed probe on Shape A): `.maintenance` removal, `wp-config.php` edits, uploads perms on Shape B, restoring the `wp-content/` half of a backup, reading fatals.
 - Anything pointing outside the wordpress / DB containers (networking, ingress, certs).
 
 Surface enough detail for a support ticket: shape, code version (HTTP-inferred) + `db_version`, exact curl status lines, the SELECT evidence, scope of users affected. Do NOT paste secrets (DB password, admin password env, Anthropic key) or dump contents.

@@ -46,22 +46,13 @@ Two columns in `gibbonPerson` are involved:
 | `passwordStrongSalt` | 22-char random string; charset `./aAbBcC…zZ0-9` |
 | `passwordStrong` | `hash('sha256', salt . plaintext_password)` — hex string, 64 chars |
 
-**Common failure modes when creating users via SQL:**
-- Storing a bcrypt hash (`$2y$…`) in `passwordStrong` → login fails with "Incorrect username and password".
-- Leaving `passwordStrongSalt` as `''` → `empty()` check throws `DatabaseLoginError` ("Your request failed due to a database error").
+Creating a user with SQL isn't a supported path: the admin adds people through Gibbon's own form ([../playbooks/add-a-user.md](../playbooks/add-a-user.md)). The scheme matters when you read or repair a row.
 
-**Correct PHP to generate credentials** (pipe via SSH into the `gibbon` container):
+**What breaks a row written by hand** (what to look for when you read or repair one):
+- A bcrypt hash (`$2y$…`) in `passwordStrong` → login fails with "Incorrect username and password".
+- `passwordStrongSalt` left as `''` → `empty()` check throws `DatabaseLoginError` ("Your request failed due to a database error").
 
-```php
-<?php
-$c = './aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ0123456789';
-$salt = '';
-for ($x = 0; $x < 22; $x++) { $salt .= $c[mt_rand(0, strlen($c)-1)]; }
-$hash = hash('sha256', $salt . 'YOUR_PASSWORD_HERE');
-echo "Salt: $salt\nHash: $hash\n";
-```
-
-Store `$salt` → `passwordStrongSalt`, `$hash` → `passwordStrong`. Never use `password_hash()` for Gibbon user records.
+Don't write `passwordStrong` or `passwordStrongSalt` yourself, not even to reset a password: the password would be typed into a command, and so into this chat. A lost password goes through [../playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md) (Gibbon's own Forgot Password flow or the person's own change), and a new person through Gibbon's form. Never use `password_hash()` for Gibbon user records.
 
 ## 2FA
 

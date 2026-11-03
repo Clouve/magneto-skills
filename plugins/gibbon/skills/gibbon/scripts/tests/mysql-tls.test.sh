@@ -19,6 +19,10 @@
 # server's RSA key: --ssl-mode=DISABLED without --get-server-public-key
 # fails with ERROR 2061.
 #
+# backup.sh must also pass --no-tablespaces (#64, 2026-11-02): without it,
+# MySQL 8's mysqldump asks for tablespace information, which needs the PROCESS
+# privilege the gibbon user doesn't have, and every backup printed a warning.
+#
 # Nothing here touches a real DB: fake mysql/mysqldump/mysqladmin/curl come
 # first on PATH, the scripts run under `env -i` with made-up GIBBON_* values,
 # and HOME is a throwaway directory.
@@ -215,6 +219,14 @@ for flavour in mysql8 mariadb; do
     check "backup.sh exits 0 and writes the dump" "${flavour}" pass
   else
     check "backup.sh exits 0 and writes the dump" "${flavour}" fail
+  fi
+  # #64: without --no-tablespaces, MySQL 8's mysqldump asks for tablespace
+  # information, which needs the PROCESS privilege the gibbon user lacks, and
+  # every backup printed an "Access denied ... PROCESS privilege" warning.
+  if grep -qE '^mysqldump -(.* )?--no-tablespaces( |$)' "${work}/${flavour}/calls"; then
+    check "backup.sh passes --no-tablespaces to mysqldump" "${flavour}" pass
+  else
+    check "backup.sh passes --no-tablespaces to mysqldump" "${flavour}" fail
   fi
 
   run_script "${flavour}" verify-health.sh

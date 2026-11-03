@@ -82,12 +82,12 @@ mysql -h "${WORDPRESS_DB_HOST}" -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}"
 
   Expect `200` with an empty body. This runs every due event **synchronously in this request**, so give it a generous `--max-time`; a long-running plugin job can still be cut off by PHP's `max_execution_time`. Re-check the oldest-timestamp query above afterward to confirm the backlog drained.
 
-- **[shell-only — probe first]** With a shell into the Shape A container (today's WordPress images ship no `clouve-ops` SSH — probe per [shell-access.md](shell-access.md), expect failure):
+- **[shell-only — probe first]** With the shell into the Shape A container (both packaged images ship the `clouve-ops` SSH account — probe per [shell-access.md](shell-access.md)), run these there over SSH:
 
   ```bash
-  wp cron event list --allow-root --path=/var/www/html          # readable schedule with next-run times
-  wp cron event run --due-now --allow-root --path=/var/www/html # run everything due
-  wp cron event run <hook> --allow-root --path=/var/www/html    # run one hook surgically
+  sudo -u www-data wp --path=/var/www/html cron event list           # readable schedule with next-run times
+  sudo -u www-data wp --path=/var/www/html cron event run --due-now  # run everything due
+  sudo -u www-data wp --path=/var/www/html cron event run <hook>     # run one hook surgically
   ```
 
   Shape B has no wp-cli in the image at all, shell or not.
@@ -98,7 +98,7 @@ There is no per-event trigger over TCP or HTTP — the HTTP nudge is all-or-noth
 
 `define('DISABLE_WP_CRON', true)` in `wp-config.php` stops the page-load spawn. The standard advice pairs it with a real system cron hitting `wp-cron.php` every minute — advice written for servers that *have* a system cron.
 
-**On Clouve, do not set it.** There is no system cron in either image to take over, and on Shape A the healthcheck probes `/`, not `wp-cron.php` — so with `DISABLE_WP_CRON` set, the heartbeat stops triggering events too and scheduling dies entirely. Setting it also requires editing `wp-config.php`, which needs a file channel that does not exist today. If a plugin's docs insist on it, explain the trade-off and decline unless the user has arranged an external scheduler (e.g., an uptime monitor hitting the public `wp-cron.php` URL — which is just traffic, solving the problem without the constant).
+**On Clouve, do not set it.** There is no system cron in either image to take over, and on Shape A the healthcheck probes `/`, not `wp-cron.php` — so with `DISABLE_WP_CRON` set, the heartbeat stops triggering events too and scheduling dies entirely. Setting it also means editing `wp-config.php`, which needs the shell (Shape A) and the wp-config gate. If a plugin's docs insist on it, explain the trade-off and decline unless the user has arranged an external scheduler (e.g., an uptime monitor hitting the public `wp-cron.php` URL — which is just traffic, solving the problem without the constant).
 
 ## First thing to check
 

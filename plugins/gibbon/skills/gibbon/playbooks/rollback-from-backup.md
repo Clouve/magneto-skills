@@ -12,7 +12,7 @@ There is no upstream Gibbon "downgrade" story (see [reference/upgrade.md](../ref
 ## Decision: partial-restore or full-restore?
 
 - **Partial restore** — a single table (e.g. just `gibbonBehaviour` because a mis-import went wrong). Do this from Magneto Agent if you can cleanly scope the rows. High risk of FK orphans if you pick wrong.
-- **Full restore** — the whole DB and the whole `gibbondata` volume. Always-correct, but it's an ops operation (requires Clouve platform access to replace volumes or to run `mysql < dump.sql` against an empty DB).
+- **Full restore** — the whole DB and the files on the `gibbondata` volume (`uploads/`, `config.php`, `customAssets/`). Always-correct, and you can do both halves yourself: the DB over TCP, the files over the `clouve-ops` SSH channel. The files come back only if the backup has a files archive ([reference/backup-restore.md](../reference/backup-restore.md)).
 
 When in doubt, full restore. The operational cost is small; the cost of a partial restore that introduces FK orphans is weeks of chasing ghost data.
 
@@ -24,23 +24,48 @@ When in doubt, full restore. The operational cost is small; the cost of a partia
 # Timestamp + DB snapshot of what you're about to overwrite.
 MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqldump \
   -h "$GIBBON_DB_HOST" -u gibbon \
-  --single-transaction --quick --lock-tables=false \
+  --single-transaction --quick --lock-tables=false --no-tablespaces \
   --default-character-set=utf8mb3 \
   gibbon > "$HOME/backups/pre-restore-$(date +%Y-%m-%d-%H-%M-%S).sql"
 ```
 
-### 2. Coordinate the file-volume restore with Clouve ops
+### 2. Confirm what comes back, before anything is replaced
 
-Magneto Agent cannot write to the `gibbon` container's `/var/www/html` volume. Tell the tenant:
+Nothing has been overwritten yet. Show the user what the restore brings back and what it replaces, and wait for their ack:
 
-> To restore, the Clouve ops team needs to:
-> 1. Stop the `gibbon` container in this app.
-> 2. Restore the `gibbondata` volume from the snapshot taken at `<timestamp>`.
-> 3. Start the container back up.
-> 
-> While you're waiting, I'll restore the database from the SQL dump I have.
+```bash
+b="$HOME/backups/gibbon-<timestamp>"
+ls -l "$b"/gibbon.sql "$b"/gibbon-files.tar.gz   # date and size of each half (no files archive: only the database comes back)
+grep -c '^CREATE TABLE' "$b/gibbon.sql"           # tables in the dump
+MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -sN -e \
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='gibbon';"   # tables about to be dropped
+# Whether the backup's config.php is the one the container has now: compare digests, never the files.
+tar -xzOf "$b/gibbon-files.tar.gz" config.php | sha256sum
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'sudo sha256sum /var/www/html/config.php'
+```
 
-### 3. Restore the DB
+Tell the user both halves' dates and sizes, how many tables are dropped and how many come back, and whether `config.php` differs. Never show `config.php` itself or a diff of it: it holds the database password.
+
+### 3. Restore the files over the `clouve-ops` channel
+
+Skip this step if the backup has no `gibbon-files.tar.gz`, and tell the user that only the database comes back. Otherwise keep the current files first, then unpack the backup's archive over them:
+
+```bash
+# The current files, in case the user wants them back.
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'cd /var/www/html && sudo tar -czf - --exclude="uploads/cache/*" config.php uploads $(test -d customAssets && echo customAssets)' \
+  > "$HOME/backups/pre-restore-files-$(date +%Y-%m-%d-%H-%M-%S).tar.gz"
+
+# The backup's files, over the current ones.
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'sudo tar -C /var/www/html -xzf - && sudo chown -R www-data:www-data /var/www/html/uploads /var/www/html/config.php' \
+  < "$HOME/backups/gibbon-<timestamp>/gibbon-files.tar.gz"
+```
+
+Files added since the backup stay where they are; the archive's files replace the ones with the same name. Restore only this deployment's own backups: another deployment's `config.php` carries its own database settings and `$guid`.
+
+### 4. Restore the DB
 
 ```bash
 # Wipe the existing tables. The gibbon user usually can DROP tables in its own DB.
@@ -56,20 +81,28 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql \
   gibbon < "$HOME/backups/gibbon-<timestamp>/gibbon.sql"
 ```
 
-**Safety:** before running the drop-and-replace, confirm with the user by showing them the dump file size and date, and the number of tables about to be dropped.
+Run it only with the ack from step 2, which covered the drop-and-replace.
 
-### 4. Force the container to re-sync
+### 5. What the next container start does
 
-After the `gibbon` container restarts (post file-volume restore), `entrypoint.sh` will:
+The restore changed files and rows, not code, so nothing needs a restart. When the `gibbon` container next starts, `entrypoint.sh` will:
 - Find `config.php` present → skip install.
 - Find `clouve/installed/<version>` → skip upgrade.
 - Wipe `uploads/cache/`.
 - Run `update-config.sh` → re-sync `$DB_*` into `config.php` and `$GIBBON_URL` into `gibbonSetting.absoluteURL`.
 - Render `/etc/cron.d/gibbon-cron` from current `$GIBBON_CRON_INTERVAL` and start cron.
 
-Nothing to do from your side — just verify after.
+Nothing to do from your side. Verify now; the next start doesn't have to come first. One exception: if Gibbon can't reach its database after the restore, the restored `config.php` holds older database settings than the container's (from before a password change, say). The next container start would write the current ones back (`update-config.sh`), but the user has no restart button for the app. Offer to put back the `config.php` that step 3 kept instead: it is the container's own copy from just before the restore, the one step 2 compared by `sha256sum`. That is an edit to `config.php`, so say which file goes back and why, show no line of either copy, and wait for the user's ack:
 
-### 5. Verify the restore
+```bash
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'sudo tar -C /var/www/html -xzf - config.php && sudo chown www-data:www-data /var/www/html/config.php' \
+  < "$HOME/backups/pre-restore-files-<timestamp>.tar.gz"
+```
+
+It unpacks only `config.php` from that archive and prints nothing from it. Then check the file as [diagnose-500.md](diagnose-500.md) step 4 does, without printing it. If step 3's archive isn't there, the user asks Clouve support for a restart, which writes the current settings back.
+
+### 6. Verify the restore
 
 Follow [reference/backup-restore.md#verify-a-restore](../reference/backup-restore.md). At minimum:
 - `gibbonSetting(version) == /var/www/html/version.php $version`.

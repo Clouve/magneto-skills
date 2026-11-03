@@ -22,7 +22,7 @@ Order of likelihood:
    ```bash
    PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -c "SELECT 1"
    # or
-   mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" -e "SELECT 1"
+   MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -e "SELECT 1"
    ```
 
 4. **`<dataroot>` writable?** `sudo -u www-data touch <dataroot>/.test && rm <dataroot>/.test`. Common after a volume remount or chown gone wrong.

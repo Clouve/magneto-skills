@@ -21,7 +21,8 @@ if [ "${DB}" = "${ODOO_DB_NAME:-}" ] && [ "${ALLOW_PROD}" != "--prod" ]; then
 fi
 
 export SSHPASS="$CLOUVE_OPS_PASSWORD"
-SSH=(sshpass -e ssh -o StrictHostKeyChecking=accept-new "clouve-ops@${ODOO_HOST}")
+# Save no host key: the Odoo container makes new ones each time it starts.
+SSH=(sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${ODOO_HOST}")
 
 NEUTRALIZE="-n"
 [ "${ALLOW_PROD}" = "--prod" ] && NEUTRALIZE=""   # a real prod restore is NOT neutralized

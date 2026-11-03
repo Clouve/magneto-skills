@@ -10,13 +10,12 @@
 #       scripts/verify-health.sh, scripts/flush-transients.sh and the
 #       diagnose / restore playbooks talk to the WordPress database over TCP
 #       with these.
-#   openssh-client + sshpass — the conditional shell channel: WordPress
-#       playbooks probe for a clouve-ops SSH account on the sibling
-#       containers (`sshpass -e ssh …` with the per-pod password from
-#       CLOUVE_OPS_PASSWORD). Today's WordPress images do not ship sshd, so
-#       the probe is expected to fail — the tools are here so the channel
-#       lights up the moment a sibling image adds the account, without a
-#       skill re-release.
+#   openssh-client + sshpass — the shell channel: WordPress playbooks
+#       probe for a clouve-ops SSH account on the sibling containers
+#       (`sshpass -e ssh …` with the per-pod password from
+#       CLOUVE_OPS_PASSWORD), then run wp-cli and file steps over it. Both
+#       Clouve-packaged images ship that account; a developer's own compose
+#       usually has none, and the playbooks fall back to TCP and HTTP there.
 #
 # These do not belong in the upstream Magneto Agent image: no other consumer
 # needs them, and shipping sshpass by default expands the platform's attack

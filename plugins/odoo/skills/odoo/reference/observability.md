@@ -2,7 +2,7 @@
 
 ## Log destination
 
-By default Odoo's `init_logger()` (`odoo/netsvc.py`) installs a `logging.StreamHandler()` — output goes to **stderr**. The container ships with **no `--logfile`** in `odoo.conf`, so logs do not go to a file. Read them via the platform log view (`kubectl logs`, Docker logs, or the Clouve console).
+By default Odoo's `init_logger()` (`odoo/netsvc.py`) installs a `logging.StreamHandler()` — output goes to **stderr**. The container ships with **no `--logfile`** in `odoo.conf`, so logs do not go to a file. They are the container's own output: nothing in the pod can read it, and the tenant's Clouve dashboard doesn't show it. Clouve support can, so a log line someone needs goes in a support ticket with the time it happened. On a developer's own docker compose, `docker logs <container>` shows it.
 
 There is no `/var/log/odoo` in this container (that path is only used when `--logfile` is configured, typically in systemd deployments). There is no Apache — Odoo runs its own Werkzeug HTTP server.
 

@@ -105,7 +105,7 @@ Anything in the DB but not on disk is an orphan. Either reinstall the missing pl
 Check connectivity:
 
 ```bash
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" -e "SELECT 1"
+MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -e "SELECT 1"
 # or
 PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -c "SELECT 1"
 ```

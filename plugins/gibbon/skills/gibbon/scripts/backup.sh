@@ -6,12 +6,10 @@
 # script the skill uses — it does not delete anything, but it can fill disk
 # on repeated runs, so it lives behind an explicit invocation.
 #
-# What this does NOT do (cannot, from AI Studio):
-#   - Back up /var/www/html/ on the gibbon container's gibbondata volume.
-#   - Back up customAssets/ on the same.
-#   - Back up config.php on the same.
-# For those, escalate to Clouve ops for a volume snapshot, OR use Gibbon's
-# admin UI "System Backup" feature if the tenant's version has one.
+# What this does NOT do: back up the files on the gibbon container's
+# gibbondata volume (uploads/, config.php, customAssets/). Archive those over
+# the clouve-ops SSH channel into the same folder; the command is in
+# ../reference/backup-restore.md.
 #
 # Env vars read (injected by the app via containerReference/applicationUrl types):
 #   GIBBON_DB_HOST        — hostname of gibbon-mysql (pod-internal)
@@ -47,12 +45,16 @@ echo "Backing up ${GIBBON_DB_NAME}@${GIBBON_DB_HOST} to ${out_file} ..."
 # TLS off, in whichever dialect the installed client speaks (lib/mysql-tls.sh).
 read -r -a no_tls <<< "$(mysql_no_tls_args mysqldump)"
 
+# --no-tablespaces: otherwise MySQL 8's mysqldump asks for tablespace
+# information, which needs the PROCESS privilege the gibbon user doesn't have.
+# Gibbon creates no tablespaces, so the dump loses nothing.
 MYSQL_PWD="${GIBBON_DB_PASSWORD}" mysqldump \
   -h "${GIBBON_DB_HOST}" \
   -u "${GIBBON_DB_USER}" \
   --single-transaction \
   --quick \
   --lock-tables=false \
+  --no-tablespaces \
   --default-character-set=utf8mb3 \
   "${no_tls[@]}" \
   "${GIBBON_DB_NAME}" \
@@ -79,7 +81,7 @@ echo "  Path:     ${out_file}"
 echo "  Size:     ${size} bytes"
 echo "  Tables:   ${tables}"
 echo
-echo "NOTE: this is a DB-only backup. For a complete backup that includes"
-echo "      /var/www/html/uploads/, /var/www/html/config.php, and"
-echo "      /var/www/html/customAssets/, request a volume snapshot of"
-echo "      'gibbondata' from Clouve ops, or export via Gibbon's admin UI."
+echo "NOTE: this is a DB-only backup. For a complete backup, also archive"
+echo "      /var/www/html/uploads/, /var/www/html/config.php and"
+echo "      /var/www/html/customAssets/ over the clouve-ops SSH channel into"
+echo "      ${out_dir}/gibbon-files.tar.gz (see reference/backup-restore.md)."

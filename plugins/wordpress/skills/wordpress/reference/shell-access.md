@@ -1,16 +1,16 @@
 # Channels and Shell Access
 
-From the Magneto Agent container you have exactly **two live channels** into a WordPress deployment today: the database over TCP (`mysql`/`mysqldump`) and the site over HTTP (`curl`). A shell inside the WordPress or database container — the `clouve-ops` SSH hop that the moodle and gibbon skills treat as a given — **does not exist here**: today's WordPress images (both the Clouve-packaged one and typical developer-submitted vanilla images) ship no sshd and no `clouve-ops` account. That single fact shapes every playbook in this skill: wp-cli lives inside the Shape A web container, so **wp-cli is currently unreachable**, and every procedure gives the TCP/HTTP path as the live one.
+From the Magneto Agent container you can reach a WordPress deployment over three channels: the database over TCP (`mysql`/`mysqldump`), the site over HTTP (`curl`), and a shell inside the WordPress and database containers over SSH as `clouve-ops`. Which ones you get depends on the deployment's shape ([stack-and-runtime.md](stack-and-runtime.md)). On Shape A, the Clouve-packaged app, both packaged images (`wordpress` and `wordpress-mariadb`) ship the `clouve-ops` sshd, the same channel the moodle and gibbon skills use, so you have all three, and wp-cli through the shell. On Shape B, a developer's own compose with the stock image, there is no SSH server and no wp-cli, so TCP and HTTP are all you have. Every procedure in this skill labels the channel each step needs and gives the TCP/HTTP fallback where one exists.
 
-This file is the channel matrix: what each channel gives you, how credentials arrive, how to probe for the conditional shell, and the safety gates that apply on every channel.
+This file is the channel matrix: what each channel gives you, how credentials arrive, how to probe for the shell, and the safety gates that apply on every channel.
 
 ## The channel matrix
 
-| Channel | Status today | Transport | What it gets you |
+| Channel | Available | Transport | What it gets you |
 |---|---|---|---|
-| **[TCP-mysql]** | Always live | `mysql` / `mysqldump` to the DB sibling on 3306 | Every `wp_*` table, dumps, scalar-option edits, install-state evidence |
-| **[HTTP]** | Always live | `curl` to the WordPress sibling on :80 | Status codes, error pages, version inference, asset/theme existence probes, wp-cron kick |
-| **[shell-only — probe first]** | **Absent today**; conditional on future images | SSH as `clouve-ops` into a sibling | wp-cli, `wp-content/` filesystem, `debug.log`, `.maintenance` removal, `wp-config.php`, chown |
+| **[TCP-mysql]** | Always | `mysql` / `mysqldump` to the DB sibling on 3306 | Every `wp_*` table, dumps, scalar-option edits, install-state evidence |
+| **[HTTP]** | Always | `curl` to the WordPress sibling on :80 | Status codes, error pages, version inference, asset/theme existence probes, wp-cron kick |
+| **[shell-only — probe first]** | Shape A: yes, in both containers (probe first). Shape B: no | SSH as `clouve-ops` into a sibling | wp-cli, `wp-content/` filesystem, `debug.log`, `.maintenance` removal, `wp-config.php`, chown |
 
 ## Channel 1: [TCP-mysql] — the database
 
@@ -34,17 +34,17 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql 
 
 # Read-only dump (backup half #1 — see backup-restore.md):
 MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqldump -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
-      --single-transaction "$WORDPRESS_DB_NAME" > dump.sql
+      --single-transaction --no-tablespaces "$WORDPRESS_DB_NAME" > dump.sql
 ```
 
 Shape caveats:
 
-- **Shape A** (Clouve-packaged): DB is MariaDB, `:latest` and unpinned — the engine version floats per pull. Verify with `SELECT VERSION()` before anything version-sensitive.
+- **Shape A** (Clouve-packaged): DB is MariaDB from the pinned `mariadb:12.3` image (12.3.2 when it was pinned). Check `SELECT VERSION()` before anything version-sensitive.
 - **Shape B** (developer compose): DB is typically MySQL 8 with `caching_sha2_password` default auth, and `MYSQL_RANDOM_ROOT_PASSWORD` is common — you have the app-scoped user only, and **root access does not exist for anyone**. If the agent's client fails with an auth-plugin error, see [troubleshooting.md](troubleshooting.md#mysql-client-cant-authenticate-shape-b--mysql-8).
 
 ## Channel 2: [HTTP] — the site
 
-`curl` to the WordPress sibling on port 80. This is your only window into PHP-land today, so use it hard:
+`curl` to the WordPress sibling on port 80. On Shape B it is your only window into PHP-land, so use it hard. On Shape A it is still the quickest check of what users see:
 
 ```bash
 # Status of the front page and the login page:
@@ -66,33 +66,49 @@ curl -s "http://${WORDPRESS_HOST}/wp-cron.php?doing_wp_cron" -o /dev/null
 
 Note that you probe the sibling over plain HTTP on :80 while real users arrive through the TLS-terminating ingress — a canonical redirect to `https://` on your direct probe can be normal, not a bug. See [troubleshooting.md](troubleshooting.md#redirect-loop) before diagnosing loops.
 
-## Channel 3: [shell-only — probe first] — conditional `clouve-ops` SSH
+## Channel 3: [shell-only — probe first] — `clouve-ops` SSH
 
-**Expected result today: failure.** The moodle and gibbon sibling images ship sshd and a `clouve-ops` account with passwordless sudo, and those skills lean on SSH for logs, CLI scripts, and file surgery. Today's WordPress images ship **neither** — but the platform mechanism is generic, so a future WordPress image rebuild could light this channel up. Probe, never assume, and never write a plan whose happy path needs a channel you haven't proven:
+**On Shape A this channel should work.** Both packaged images, `wordpress` and `wordpress-mariadb`, ship openssh-server and the `clouve-ops` account with passwordless sudo, like the moodle and gibbon images. sshd starts when `CLOUVE_OPS_PASSWORD` is set, and the platform sets it on every deployment that runs the AI Assistant, so wherever this skill runs on Shape A the channel is there. (The same images run with no sshd on a deployment without the AI Assistant, but then nothing runs this skill.) Checked on a live Kubernetes deployment on 2026-08-05: the probe passed to both containers, wp-cli answered over SSH, and [scripts/verify-health.sh](../scripts/verify-health.sh) reported GREEN. On Shape B the stock image runs no SSH server. Either way, probe first, and never write a plan whose happy path needs a channel you haven't proven:
 
 ```bash
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
     "clouve-ops@${WORDPRESS_HOST}" true \
     && echo "shell channel: AVAILABLE" \
-    || echo "shell channel: not available (expected today)"
+    || echo "shell channel: not available"
 ```
 
-- Any failure means the channel is absent: connection refused (no sshd), timeout, auth rejection (no account), or `CLOUVE_OPS_PASSWORD` not set. Do not retry-loop; record the result and use the TCP/HTTP path.
-- Probe once per session per host; a sibling that failed the probe at session start will not spontaneously grow an sshd.
+- Probe the database container the same way (`clouve-ops@${WORDPRESS_DB_HOST}`) before a step that needs a shell there.
+- On Shape B a failed probe is normal. Record it and use the TCP/HTTP path.
+- On Shape A a failed probe is a problem to report. sshd starts a little after its container does, so retry once after a short wait. If it still fails, check "Failure modes" below, tell the user what failed, and use the TCP/HTTP path meanwhile. Don't retry in a loop.
 
-**What lights up if the probe ever succeeds** (Shape A):
+**What the shell gives you** (Shape A):
 
-- **wp-cli** at `/usr/local/bin/wp` — the preferred tool for almost everything (`wp option`, `wp user update`, `wp search-replace --dry-run`, `wp core update-db`). Run it with `--allow-root` only when you must, and chown `wp-content` afterwards — root-owned droppings persist and break later updates.
-- **File operations**: enabling `WP_DEBUG_LOG` (reading an existing `wp-content/debug.log` is HTTP-fetchable — it sits in the docroot), removing a stuck `.maintenance`, gated `wp-config.php` edits, `chown -R www-data wp-content`, inspecting plugin/theme directories.
+- **wp-cli** at `/usr/local/bin/wp`, the preferred tool for almost everything (`wp option`, `wp user update`, `wp search-replace --dry-run`, `wp core update-db`). Run it as the web server's user, so whatever it writes belongs to `www-data`:
+  ```bash
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+      "sudo -u www-data wp --path=/var/www/html core version"
+  ```
+  That form printed `6.9` on the 2026-08-05 check. Avoid `--allow-root`: the root-owned files it leaves behind persist and break later updates. If root was unavoidable, `sudo chown -R www-data:www-data` the paths it touched.
+- **File operations**: enabling `WP_DEBUG_LOG` with the log outside the docroot ([configuration.md](configuration.md)), removing a stuck `.maintenance`, gated `wp-config.php` edits, `chown -R www-data wp-content`, inspecting plugin/theme directories.
 - **Not historic Apache logs**: in official-image derivatives the Apache error/access logs stream to container stderr (the files under `/var/log/apache2/` are typically links to the process's stderr), so even a shell does not buy you scrollback. `debug.log` is the readable artifact, and only once `WP_DEBUG_LOG` is on.
 
-On Shape B even a hypothetical shell would find **no wp-cli and no mysql client** in the web container — the image is stock.
+On Shape B there is no shell, and the stock web image has **no wp-cli and no mysql client** either.
+
+### Failure modes
+
+| Symptom | Likely cause |
+|---|---|
+| `Connection refused` right after the pod or a container started | sshd isn't up yet. Retry after a few seconds. |
+| `Connection refused` that persists | Shape B: there is no sshd, which is normal. Shape A: the container started without `CLOUVE_OPS_PASSWORD`, so its start script logged `[clouve-ops-sshd] ✗ CLOUVE_OPS_PASSWORD is unset — sshd will not start` to the container log, which you can't read from here. Tell the user, and use the TCP/HTTP path. |
+| `Permission denied` | Shape A: the password this container has differs from the one the sibling applied with `chpasswd` at its start, or the sibling hasn't applied it yet. Retry once after a few seconds; if it persists, tell the user. Shape B: there is no `clouve-ops` account. |
+| `Host key verification failed` | The command lacks `-o StrictHostKeyChecking=accept-new`: pass it. If ssh also warns that the remote host identification has changed, the key saved in `~/.ssh/known_hosts` came from an earlier image (a rebuilt image has new keys). Tell the user, then add `-o UserKnownHostsFile=/dev/null` next to `accept-new`: ssh takes the key the container shows and saves none, as newer agents' own settings do for the app's containers. Leave `~/.ssh/known_hosts` as it is. |
+| `Connection timed out` or `Could not resolve hostname` | Wrong host name, or the container is down. Rediscover the names with the commands under Channel 1 above, and check that the site and database still answer over HTTP and TCP. |
 
 ## When each channel is the right tool
 
 - **Routine SQL, install-state evidence, backups, gated scalar-option edits** → [TCP-mysql]. Fastest, always live, best transcripts.
 - **"Is the site up", version inference, existence probes, cron kick** → [HTTP].
-- **Anything touching files** — `wp-config.php`, `.maintenance`, enabling `WP_DEBUG_LOG` (reading an existing `debug.log` is HTTP-fetchable when it exists), plugin/theme code, permissions → needs the shell channel. Today that means: say so plainly, offer the DB/HTTP-side alternative when one exists (this skill's playbooks list them), and otherwise route the user — many operations they can do themselves from `/wp-admin`, and the rest is a Clouve support ticket. **Do not improvise a file channel through the database** ([SKILL.md](../SKILL.md) principle 7).
+- **Anything touching files** — `wp-config.php`, `.maintenance`, enabling `WP_DEBUG_LOG` (reading an existing `debug.log` is HTTP-fetchable when it exists), plugin/theme code, permissions → the shell channel. On Shape A, use it once the probe passes. On Shape B, or after a failed probe, say so plainly, offer the DB/HTTP-side alternative when one exists (this skill's playbooks list them), and otherwise route the user — many operations they can do themselves from `/wp-admin`, and the rest is a Clouve support ticket. **Do not improvise a file channel through the database** ([SKILL.md](../SKILL.md) principle 7).
 
 ## Safety gates apply on every channel
 
@@ -101,5 +117,5 @@ The gates in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow) ar
 - A multi-row `UPDATE`/`DELETE` over [TCP-mysql] gets its `SELECT COUNT(*)` dry-run + ack, always.
 - The `active_plugins` and theme-fallback writes are gated even though they are single-row — record the current value first, print the exact SQL, wait for ack.
 - [HTTP] is read-mostly but not read-only: kicking `wp-cron.php` runs due jobs, and POSTing to `install.php` **installs a site** — never POST to installer or admin endpoints without printed-command + ack.
-- Over a future shell, `wp` commands that mutate state carry the same gates as their SQL equivalents, and `sudo` does not change the safety story.
+- Over the shell, `wp` commands that mutate state carry the same gates as their SQL equivalents, and `sudo` does not change the safety story.
 - `mysqldump` output contains secrets and content — treat dump files as sensitive; never paste their contents into chat.

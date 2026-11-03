@@ -38,7 +38,7 @@ Addons can register additional commands via `cli/<command>.py` in their module d
 
 Selection logic in `start()`:
 
-- `workers = 0` (default) → **ThreadedServer**: single process, multi-threaded. This is PID 1 in the container.
+- `workers = 0` (default) → **ThreadedServer**: single process, multi-threaded. Odoo runs this way here, as the child of tini, the container's PID 1 (see [Restarting Odoo](#restarting-odoo)).
 - `workers > 0` → **PreforkServer**: parent + worker child processes.
 - Gevent: selected only if `odoo.evented` is true (not used in this deployment).
 
@@ -54,10 +54,10 @@ Selection logic in `start()`:
 
 ## Restarting Odoo
 
-Odoo is PID 1 in its container: the entrypoint `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`, and the clouve-ops `sshd` runs as its child. To restart Odoo, send it `SIGHUP` over the clouve-ops channel:
+tini is PID 1 in the Odoo container. It runs the entrypoint, which starts the clouve-ops `sshd` in the background and then `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`, so Odoo is tini's child and `sshd` is Odoo's. tini reaps finished processes and passes signals on to Odoo. To restart Odoo, send `SIGHUP` to PID 1 over the clouve-ops channel:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   'grep -q odoo /proc/1/cmdline && sudo kill -HUP 1'
 for i in $(seq 1 30); do
   sleep 2
@@ -65,9 +65,13 @@ for i in $(seq 1 30); do
 done
 ```
 
-Odoo gives in-flight requests up to a second, logs "Initiating server reload", and re-executes itself with the same arguments (`_reexec()` in `odoo/service/server.py`). The container keeps running, `sshd` and your SSH session survive, and `/web/health` answers again within seconds. Checked on Odoo 19 on 2026-10-20: about half a second on a small database, two restarts in a row, same container, no container restart. The new process reads `odoo.conf` and `addons_path` again, so it loads a module folder just added to `/mnt/extra-addons`. It does not rerun the entrypoint, so environment changes don't apply.
+Odoo gives in-flight requests up to a second, logs "Initiating server reload", and re-executes itself with the same arguments (`_reexec()` in `odoo/service/server.py`). The container keeps running, `sshd` and your SSH session survive, and `/web/health` answers again within seconds. Checked on Odoo 19 on 2026-10-20: about half a second on a small database, two restarts in a row, same container, no container restart. Checked again on the 2026-11-02 image, with tini: Odoo re-executed itself as the same process, tini stayed PID 1, and clouve-ops could still log in. The new process reads `odoo.conf` and `addons_path` again, so it loads a module folder just added to `/mnt/extra-addons`. It does not rerun the entrypoint, so environment changes don't apply.
 
-Installing or upgrading a module needs no restart (see [playbooks/install-or-upgrade-module.md](../playbooks/install-or-upgrade-module.md)). Don't send `SIGTERM` or `SIGKILL` to PID 1: Odoo exits and the container stops with it. And don't hand restarts to the tenant: the Clouve dashboard has no restart button.
+Odoo images built before 2026-11-02 have no tini. There the entrypoint `exec`s straight into Odoo, which is PID 1, and the same command restarts it: the `grep` finds `odoo` in either command line. Odoo never reaps processes it didn't start, so on those images every finished SSH session leaves a `<defunct>` process behind until the container restarts. Each one holds nothing but a process-table slot.
+
+Odoo's command line holds the database password, which the image's entrypoint passes as `--db_password`, so never print one in the Odoo container: no `cat` of a `/proc/*/cmdline` file and no `ps` that shows arguments (`ps aux`, `ps -ef`). The restart's `grep -q` prints nothing.
+
+Installing or upgrading a module needs no restart (see [playbooks/install-or-upgrade-module.md](../playbooks/install-or-upgrade-module.md)). Don't send `SIGTERM` or `SIGKILL` to Odoo or to tini: Odoo exits, and the container stops with it. And don't hand restarts to the tenant: the Clouve dashboard has no restart button.
 
 ## Canonical paths (this image)
 

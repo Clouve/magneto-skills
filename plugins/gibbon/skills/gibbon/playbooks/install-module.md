@@ -37,14 +37,20 @@ Use when the tenant asks "can you install the `<X>` module?" or "I found this Gi
 
 ### 1. Place the module folder on the `gibbondata` volume
 
-The module's files need to live at `/var/www/html/modules/<ModuleName>/` inside the `gibbon` container. From Magneto Agent you cannot write there directly.
+The module's files need to live at `/var/www/html/modules/<ModuleName>/` inside the `gibbon` container. You can put them there yourself over the `clouve-ops` SSH channel ([reference/shell-access.md](../reference/shell-access.md)). The folder is on the `gibbondata` volume, so it survives restarts.
 
-Paths to get it there:
+Two ways to get it there:
 1. **Upload via Gibbon's admin UI** — some modules ship a `.tar.gz` or `.zip` that Gibbon's **System Admin → Manage Modules → Install from File** (if the tenant's version has it) can unpack. Cleanest path.
-2. **Clouve ops drop-in** — ops copies the folder into the volume and restarts the `gibbon` container.
-3. **User does it by hand** — `kubectl cp` or equivalent. The user is doing it, not you.
+2. **Copy it in over the `clouve-ops` channel** — send the very folder you audited, so what you read is what runs. After the user's ack, from the directory in this container that holds the module folder:
 
-Pick based on what the tenant has access to. Do NOT attempt to shell into the `gibbon` container from Magneto Agent.
+```bash
+tar -czf - "<ModuleName>" \
+  | SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+      "if sudo test -e '/var/www/html/modules/<ModuleName>'; then echo 'already there: stop' >&2; exit 1; fi
+       sudo tar -C /var/www/html/modules -xzf - && sudo chown -R www-data:www-data '/var/www/html/modules/<ModuleName>'"
+```
+
+The folder name must match the module's `$name` in `manifest.php`. If a folder of that name is already there, stop: replacing a module's code is an update, with its own backup and ack.
 
 ### 2. Register the module in Gibbon
 
@@ -80,7 +86,7 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$G
 
 - Module in `gibbonModule` but not in nav → `active='N'`, or no `gibbonPermission` row for the logged-in user's role.
 - Module in nav but pages 403 → `gibbonPermission` missing for the role.
-- Module page 500s → PHP error. Check Apache log (requires the tenant or ops to surface it from the `gibbon` container).
+- Module page 500s → PHP error. Apache's error log usually isn't readable from here ([reference/shell-access.md](../reference/shell-access.md#the-apache-error-log)). Check the module's PHP over the `clouve-ops` channel instead: `sudo find '/var/www/html/modules/<ModuleName>' -name '*.php' -exec php -l {} \; | grep -v '^No syntax errors'`.
 - Module install failed → check the SQL in `install.sql` for charset/collation issues (utf8mb3 required) and missing FKs.
 
 If the install left the DB in a half-installed state: restore from the pre-install backup. Do NOT try to "finish" the install by hand unless the user explicitly accepts the risk AND you can show them exactly what rows need adding.

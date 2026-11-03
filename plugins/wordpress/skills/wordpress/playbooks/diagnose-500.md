@@ -2,7 +2,7 @@
 
 Use this playbook when the user reports the WordPress site is erroring — an HTTP 500, the "There has been a critical error on this website" page, or a white screen. Don't run more than one diagnostic step at a time; stop when the answer is clear and tell the user before changing anything.
 
-**The channel reality shapes this whole ladder** ([reference/shell-access.md](../reference/shell-access.md)): there is no shell into the WordPress container today, so you cannot read the fatal. The ladder therefore leans on HTTP differentials and DB-side evidence, with the gated no-shell isolation moves where they exist.
+**The channel reality shapes this whole ladder** ([reference/shell-access.md](../reference/shell-access.md)): Apache's error log goes to the container's stderr, which no channel lets you read. On Shape A the shell lets you switch on WordPress's own debug log and read the fatal there (Step 1). On Shape B, or when the probe fails, the ladder leans on HTTP differentials and DB-side evidence, with the gated no-shell isolation moves where they exist.
 
 ## Preconditions
 
@@ -33,14 +33,14 @@ If `200 OK`, ask the user for the exact URL, a screenshot/copy of the error, and
 
 ## Step 0.5: Maintenance mode? **[HTTP]**
 
-A 503 with *"Briefly unavailable for scheduled maintenance"* is a stuck `.maintenance` file from an interrupted update, not a 500. Core timestamps the file and ignores it after roughly 10 minutes, so re-probe after 10 minutes; if it persists, removing the file needs a file channel that doesn't exist today — see [reference/troubleshooting.md](../reference/troubleshooting.md#stuck-in-maintenance-mode) for the honest routing, and find out which update was interrupted before anyone retries it.
+A 503 with *"Briefly unavailable for scheduled maintenance"* is a stuck `.maintenance` file from an interrupted update, not a 500. Core timestamps the file and ignores it after roughly 10 minutes, so re-probe after 10 minutes; if it persists, removing the file is a **[shell-only — probe first]** step (Shape A) — see [reference/troubleshooting.md](../reference/troubleshooting.md#stuck-in-maintenance-mode) for it and for the routing without a shell, and find out which update was interrupted before anyone retries it.
 
 ## Step 1: The log reality check (read this before hunting for logs)
 
-On the moodle skill, Step 1 is "tail the Apache error log over SSH." Here that rung is missing, and you should not pretend otherwise:
+There is no Apache error log to tail here, even over SSH, and you should not pretend otherwise:
 
 - Apache's error stream goes to **container stderr** in official-image derivatives. The agent has no `docker logs` / `kubectl logs` — that stream is invisible from here on every channel.
-- `wp-content/debug.log` only exists if `WP_DEBUG` + `WP_DEBUG_LOG` are on. *Enabling* that (a `wp-config.php` edit) needs a **[shell-only — probe first]** channel — probe if you like (`sshpass -e ssh -o ConnectTimeout=3 ... true` — expected to fail today; see [reference/shell-access.md](../reference/shell-access.md)). *Reading* an existing log, though, is **[HTTP]** — it sits in the docroot, so probe opportunistically:
+- `wp-content/debug.log` only exists if `WP_DEBUG` + `WP_DEBUG_LOG` are on. *Enabling* them is a `wp-config.php` edit over the **[shell-only — probe first]** channel (Shape A), under the wp-config gate: turn them on, reproduce the error once, read the log over SSH, then turn them off again. [reference/configuration.md](../reference/configuration.md) has the commands, which send the log to `/tmp/wp-debug.log`, outside the docroot, where nobody can fetch it over HTTP. A `debug.log` left in `wp-content/` from an earlier time is public, and reading it is **[HTTP]**, so probe for one (and tell the user if it's there):
 
   ```bash
   curl -sf "http://${WORDPRESS_HOST}/wp-content/debug.log" | tail -50
@@ -48,7 +48,7 @@ On the moodle skill, Step 1 is "tail the Apache error log over SSH." Here that r
   ```
 - Shape A forces `WP_DEBUG_DISPLAY` off on every boot, so fatals will not appear in HTTP bodies either.
 
-Conclusion: you will usually **not** get the fatal's file/line. The rest of the ladder builds the diagnosis from HTTP differentials (Step 2), DB evidence (Step 3), and gated isolation (Steps 4–5). If the user can view the pod logs in their Clouve dashboard or has cluster access, the first fatal in the burst short-circuits all of this — ask.
+Conclusion: without a shell you will usually **not** get the fatal's file/line; on Shape A the debug log gives it to you. Either way, the rest of the ladder builds the diagnosis from HTTP differentials (Step 2), DB evidence (Step 3), and gated isolation (Steps 4 and 5). Apache's and PHP's errors are the container's own output. A developer running their own compose can read it with `docker logs`, so ask them. On the Clouve app neither you nor the user can read it, but Clouve support can: if the ladder doesn't find the cause, the support ticket gives the time of the 500 so support can look up the first fatal.
 
 ## Step 2: HTTP differential — scope the failure **[HTTP]**
 
@@ -90,7 +90,7 @@ Evidence this can surface: a `siteurl`/`home` mismatch (redirect trouble masquer
 
 ## Step 4: Plugin isolation — the gated no-shell fallback **[TCP-mysql]**
 
-With a shell this would be `wp plugin deactivate --all`. Without one, the documented fallback is writing the empty serialized array — one of the few serialized writes that is safe, because the value is a known constant. This is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): "Deactivate all plugins"): **record the current value first**, print the exact SQL, and wait for the user's ack.
+With a shell (Shape A), prefer `sudo -u www-data wp --path=/var/www/html plugin deactivate --all --skip-plugins --skip-themes`, under the same gate below. wp-cli loads the active plugins and the theme before it runs a command, so without the two `--skip` flags a plugin that fatals on load kills the deactivation too. Without one, the documented fallback is writing the empty serialized array — one of the few serialized writes that is safe, because the value is a known constant. This is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): "Deactivate all plugins"): **record the current value first**, print the exact SQL, and wait for the user's ack.
 
 1. **Record the current value** (Step 3 already did — confirm you have the exact string saved somewhere durable in the conversation):
    ```sql
@@ -132,12 +132,12 @@ Re-probe. Recovers → the old theme's code is at fault; the user chooses fix-or
 
 Stop and route — with your evidence attached — when the ladder lands on any of:
 
-- Plugins ruled out (Step 4), theme ruled out (Step 5), DB healthy → the fatal is in `wp-config.php`, a must-use plugin, a drop-in (`db.php`, `object-cache.php`), or a damaged core file. All file-channel territory.
+- Plugins ruled out (Step 4), theme ruled out (Step 5), DB healthy → the fatal is in `wp-config.php`, a must-use plugin, a drop-in (`db.php`, `object-cache.php`), or a damaged core file. All file-channel territory: on Shape A, look at them over the shell (read-only first) before you route; without a shell, route.
 - Broken file tree (Step 2, asset 404s) that one platform-side restart didn't heal.
 - Stuck `.maintenance` past the ~10-minute self-expiry.
 - Any fix that needs the pod's env, resources, or a restart — platform-managed, and capacity is paid ([SKILL.md](../SKILL.md) principle 11).
 
-Routing, in order: things the user can do from `/wp-admin` (if reachable — the differential tells you); the user's Clouve dashboard (pod logs, restart); a support ticket carrying the evidence pack below.
+Routing, in order: things the user can do from `/wp-admin` (if reachable: the differential tells you), then a support ticket carrying the evidence pack below. The user's Clouve dashboard has no log view and no restart button for the app.
 
 ## Step 7: Tell the user
 

@@ -72,7 +72,7 @@ The entrypoint runs `set +e` — apart from two explicit exits, failures are log
 5. **[HTTP]** `curl -s "http://${WORDPRESS_HOST}/feed/" | grep -o '<generator>[^<]*'` → the expected code version (`6.9` on the current packaged image — the tag is `wordpress:6.9.0`, but core omits the trailing `.0` on `x.y.0` releases; patch releases like `6.9.1` match exactly). Code version ahead of what `db_version` implies means a pending schema update ([upgrade.md](upgrade.md)).
 6. **[HTTP]** Fetch one known permalink (any `SELECT post_name FROM wp_posts WHERE post_status='publish' LIMIT 1` over **[TCP-mysql]**, then `curl -sI "http://${WORDPRESS_HOST}/<post_name>/"`) → `200`. Proves rewrites/`.htaccess` are live, not just the front page.
 
-A shell channel would add file-level checks (uploads ownership, `wp core verify-checksums`) — **[shell-only — probe first]**, and today's images don't have one, so treat the six checks above as the complete achievable verification and say so rather than implying more was checked.
+On Shape A the shell adds file-level checks (uploads ownership, `sudo -u www-data wp --path=/var/www/html core verify-checksums`) — **[shell-only — probe first]**. Without a shell (Shape B, or a failed probe), treat the six checks above as the complete achievable verification and say so rather than implying more was checked.
 
 ## What install does NOT give you
 

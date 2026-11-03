@@ -2,7 +2,7 @@
 
 Use this on a brand-new WordPress site, or any time the tenant asks "is this safe to expose?" It walks the checks and settings to apply before letting the public in.
 
-This is a **checklist, not a linear recipe** — and, more than any other playbook in this skill, it is dominated by the channel reality: from the agent container you can *detect* most weaknesses over **[HTTP]** and **[TCP-mysql]**, but most of the *fixes* live in `wp-config.php`, in web-server config, or behind `/wp-admin` — a **file channel** you almost certainly do not have today. So each item below is labeled with (a) the channel that detects it and (b) whether the fix is live-from-here or **recommend-and-route**. Be honest with the user about which is which; do not narrate a fix you cannot apply.
+This is a **checklist, not a linear recipe** — and, more than any other playbook in this skill, it is dominated by the channel reality: from the agent container you can *detect* most weaknesses over **[HTTP]** and **[TCP-mysql]**, but most of the *fixes* live in `wp-config.php`, in web-server config, or behind `/wp-admin`. On Shape A the shell gives you a **file channel** for the `wp-config.php` ones; on Shape B you have none. So each item below is labeled with (a) the channel that detects it and (b) whether the fix is live-from-here or **recommend-and-route**. Be honest with the user about which is which; do not narrate a fix you cannot apply.
 
 The rationale behind every item is in [../reference/security.md](../reference/security.md). Gates cited below are defined in [SKILL.md → Safety gates](../SKILL.md).
 
@@ -14,13 +14,13 @@ Everything branches on this. Confirm which shape you are on and whether a shell 
 compgen -e | grep -iE 'wordpress|mysql|maria|host'                       # names only: the sibling host and DB variables
 clv-secret --list | grep -iE 'wordpress|mysql|maria|host'                # the passwords' names
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
-  clouve-ops@"${WORDPRESS_HOST}" true && echo "shell: yes" || echo "shell: no (expected today)"
+  clouve-ops@"${WORDPRESS_HOST}" true && echo "shell: yes" || echo "shell: no"
 ```
 
 - **Shape A** (Clouve-packaged `wordpress` + `wordpress-mariadb`): the installer entrypoint already forces some good defaults every boot (`WP_DEBUG_DISPLAY` off, `siteurl`/`home` from the platform). Note which controls it hands you for free so you don't re-do them.
 - **Shape B** (developer compose, vanilla image): nothing reconciles anything; more of this list is on the user.
 
-If the shell probe fails (the normal case today), treat every file-channel item as recommend-and-route.
+The shell probe should pass on Shape A and fails on Shape B; a failure on Shape A is a problem to report ([../reference/shell-access.md](../reference/shell-access.md) has the failure modes). Without a shell, treat every file-channel item as recommend-and-route.
 
 ## 1. Confirm the site is reached over HTTPS — [TCP-mysql] + [HTTP]
 
@@ -83,8 +83,8 @@ Debug output on a public page leaks paths, queries, and sometimes secrets.
 
 `define( 'DISALLOW_FILE_EDIT', true );` in `wp-config.php` removes the Theme/Plugin File Editors, closing a straight admin-cookie → RCE path.
 
-- **With a shell** (rare today): `wp config set DISALLOW_FILE_EDIT true --raw --allow-root` (wp-config edit gate applies: print the exact command, get user ack first — SKILL.md safety gates), then re-chown anything it touched (`--allow-root` leaves root-owned files; only `uploads/` is auto-chowned).
-- **Without a shell** (today): no live path — recommend the constant (next image build / file manager) or a hardening plugin that offers the toggle. There is no reliable HTTP signal for its current state, so treat this as recommend-and-verify. See [../reference/security.md → `DISALLOW_FILE_EDIT`](../reference/security.md).
+- **With a shell** (Shape A): `sudo -u www-data wp --path=/var/www/html config set DISALLOW_FILE_EDIT true --raw` over SSH (wp-config edit gate applies: print the exact command, get user ack first — SKILL.md safety gates). Running it as `www-data` keeps the file's owner; if you ever had to use `--allow-root`, re-chown anything it touched (only `uploads/` is auto-chowned).
+- **Without a shell** (Shape B, or a failed probe): no live path — recommend the constant (next image build / file manager) or a hardening plugin that offers the toggle. There is no reliable HTTP signal for its current state, so treat this as recommend-and-verify. See [../reference/security.md → `DISALLOW_FILE_EDIT`](../reference/security.md).
 
 ## 7. Block PHP execution under `uploads/` — recommend-and-route (server config)
 
