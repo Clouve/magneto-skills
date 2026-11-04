@@ -13,6 +13,10 @@
 # README.md's table, when a catalog entry has no plugin directory, or when a plugin
 # directory has no catalog entry.
 #
+# The README row has the plugin's name, category, version and a short description (N7,
+# 2026-11-03: CLAUDE.md says a plugin added or changed updates its row). Fails, too, when a
+# row's category differs from the catalog's, or its description is empty.
+#
 # Run: bash tests/plugin-versions.test.sh
 
 set -uo pipefail
@@ -28,10 +32,12 @@ root = pathlib.Path(sys.argv[1])
 catalog = {p["name"]: p for p in json.load(open(root / ".claude-plugin" / "marketplace.json"))["plugins"]}
 # README.md's Plugins table: | `name` | Category | Version | Description |
 readme = {}
+rows = {}
 for row in (root / "README.md").read_text().splitlines():
-    m = re.match(r"\|\s*`([a-z0-9-]+)`\s*\|[^|]*\|\s*([^|\s]+)\s*\|", row)
+    m = re.match(r"\|\s*`([a-z0-9-]+)`\s*\|([^|]*)\|\s*([^|\s]+)\s*\|([^|]*)\|", row)
     if m:
-        readme[m.group(1)] = m.group(2)
+        readme[m.group(1)] = m.group(3)
+        rows[m.group(1)] = (m.group(2).strip(), m.group(4).strip())
 dirs = sorted(d.name for d in (root / "plugins").iterdir() if d.is_dir())
 for name in sorted(set(catalog) - set(dirs)):
     print(f"bad {name}: in marketplace.json but has no plugins/{name}/")
@@ -49,8 +55,13 @@ for name in dirs:
     versions = {"plugin.json": manifest, "marketplace.json": listed, "README.md": readme.get(name)}
     if skill is not None or devops:
         versions["SKILL.md"] = skill
+    category, description = rows.get(name, (None, None))
     if None in versions.values() or len(set(versions.values())) != 1:
         print(f"bad {name}: " + ", ".join(f"{k} {v}" for k, v in versions.items()))
+    elif category != catalog[name].get("category"):
+        print(f"bad {name}: README.md's category {category!r}, marketplace.json's {catalog[name].get('category')!r}")
+    elif not description:
+        print(f"bad {name}: README.md's row has no description")
     else:
         print(f"ok {name} {manifest}")
 PY
@@ -59,9 +70,9 @@ PY
 bad="$(grep '^bad ' <<< "$report" || true)"
 ok="$(grep -c '^ok ' <<< "$report" || true)"
 if [ -z "$bad" ] && [ "$ok" -gt 0 ]; then
-  pass "every plugin has one version in plugin.json, SKILL.md, marketplace.json and README.md ($ok plugins)"
+  pass "every plugin has one version in plugin.json, SKILL.md, marketplace.json and README.md, whose row has the catalog's category and a description ($ok plugins)"
 else
-  fail "every plugin has one version in plugin.json, SKILL.md, marketplace.json and README.md"
+  fail "every plugin has one version in plugin.json, SKILL.md, marketplace.json and README.md, whose row has the catalog's category and a description"
   printf '%s\n' "${bad:-no plugin found, so the scan is broken}" | sed 's/^bad /       /'
 fi
 

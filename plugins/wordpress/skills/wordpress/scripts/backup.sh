@@ -211,17 +211,17 @@ probe_shell() {
     [[ -n "${CLOUVE_OPS_PASSWORD:-}" ]] || return 1
     command -v sshpass >/dev/null 2>&1 || return 1
     SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
-        -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=no \
+        -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no \
         "clouve-ops@${WORDPRESS_HOST}" true 2>/dev/null
 }
 
 if probe_shell; then
     log "Shell channel to ${WORDPRESS_HOST} exists — archiving wp-content/ + wp-config.php → ${content_file}"
     export SSHPASS="${CLOUVE_OPS_PASSWORD}"
-    ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no)
     # cache/ and upgrade/ are ephemeral (page-cache output, half-unpacked
     # updates) — excluding them keeps the archive restorable, not smaller-but-broken.
-    if ! sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${WORDPRESS_HOST}" "
+    if ! sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no \
+        "clouve-ops@${WORDPRESS_HOST}" "
         cd /var/www/html || exit 1
         if command -v sudo >/dev/null 2>&1; then
             sudo tar --exclude='wp-content/cache' --exclude='wp-content/upgrade' -czf - wp-content wp-config.php

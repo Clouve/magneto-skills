@@ -11,7 +11,9 @@
 #
 # Fails on any of those stale phrases in a .md or .sh file under plugins/wordpress (install.sh included). Also fails
 # unless reference/shell-access.md says both packaged images ship the clouve-ops sshd, that sshd starts when
-# CLOUVE_OPS_PASSWORD is set, and gives the wp-cli form `sudo -u www-data wp --path=/var/www/html`; unless the
+# CLOUVE_OPS_PASSWORD is set, and gives wp-cli as scripts/wp.sh, saying why (0.1.6: an SSH session doesn't have the
+# container's environment, where wp-config.php finds the database settings, so a plain `sudo -u www-data wp ...` over
+# SSH stops with "Error establishing a database connection"); when any markdown still runs wp that way; unless the
 # 2026-08-05 "Channel reality" entry is gone from learnings.md (its facts now live in the reference files) with the
 # "Secrets. Ever." line kept. tests/mysqldump-no-tablespaces.test.sh checks that every wordpress mysqldump, in the
 # markdown and in scripts/backup.sh, passes --no-tablespaces.
@@ -70,10 +72,53 @@ if grep -qE 'starts (only )?when `CLOUVE_OPS_PASSWORD` is set' "$ACCESS"; then
 else
   fail "shell-access.md says sshd starts when CLOUVE_OPS_PASSWORD is set, naming it bare"
 fi
-if grep -qF 'sudo -u www-data wp --path=/var/www/html' "$ACCESS"; then
-  pass "shell-access.md gives wp-cli as sudo -u www-data wp --path=/var/www/html"
+if grep -qF 'scripts/wp.sh' "$ACCESS" && grep -qiE 'database settings' "$ACCESS" \
+  && grep -qF 'Error establishing a database connection' "$ACCESS"; then
+  pass "shell-access.md gives wp-cli as scripts/wp.sh, and why (a plain SSH session has no database settings)"
 else
-  fail "shell-access.md gives wp-cli as sudo -u www-data wp --path=/var/www/html"
+  fail "shell-access.md gives wp-cli as scripts/wp.sh, and why (a plain SSH session has no database settings)"
+fi
+# wordpress 0.1.6: every ssh and scp command keeps and checks no saved host key, as gibbon's and odoo's do. The
+# WordPress images make new host keys when they are rebuilt, and on an agent without the Magneto Agent's sibling SSH
+# settings a saved key that no longer matches stops the command. tests/lib/ssh-host-key-check.py puts each command's
+# -o options, written on its line, through the real `ssh -G -F /dev/null`.
+if ! command -v ssh > /dev/null 2>&1; then
+  fail "ssh is installed, to check each command's options with ssh -G"
+else
+  commands="$(python3 -I "$ROOT/tests/lib/ssh-host-key-check.py" "$ROOT" wordpress)"
+  bad="$(grep '^bad ' <<< "$commands" || true)"
+  n_cmds="$(grep -c '' <<< "$commands" || true)"
+  if [ "$n_cmds" -ge 10 ] && [ -z "$bad" ]; then
+    pass "every ssh and scp command passes StrictHostKeyChecking=accept-new and UserKnownHostsFile=/dev/null ($n_cmds commands)"
+  else
+    fail "every ssh and scp command passes StrictHostKeyChecking=accept-new and UserKnownHostsFile=/dev/null ($n_cmds commands)"
+    printf '%s\n' "${bad:-found too few commands, so the scan is broken}" | sed 's/^bad /       /' | cut -c1-200
+  fi
+fi
+# wordpress 0.1.6: wp over SSH without the container's settings can't reach the database, so every wp command in the
+# markdown goes through scripts/wp.sh, which loads them (tests/wordpress-wp-runner.test.sh runs it).
+mapfile -t md_files < <(printf '%s\n' "${files[@]}" | grep '\.md$')
+bare_wp="$(grep -nHE -- '-u www-data wp( |$)|sudo -u www-data wp' "${md_files[@]}" || true)"
+if [ -z "$bare_wp" ]; then
+  pass "no markdown runs wp over SSH without WordPress's database settings (each wp command goes through scripts/wp.sh)"
+else
+  fail "no markdown runs wp over SSH without WordPress's database settings (each wp command goes through scripts/wp.sh)"
+  printf '%s\n' "$bare_wp" | sed "s#^$ROOT/##; s/^/       /" | cut -c1-220
+fi
+# A wp command in backticks on a line about the shell is one the assistant runs over SSH, so it goes through wp.sh
+# too (headings aside).
+shell_wp="$(grep -nHE '`wp [a-z]' "${md_files[@]}" | grep -iE 'with (a|the) shell|over (the )?(shell|ssh)|shell-only|or a shell' \
+  | grep -vF 'wp.sh' | grep -vE '^[^:]+:[0-9]+:#' || true)"
+if [ -z "$shell_wp" ]; then
+  pass "no markdown gives a bare wp command to run with the shell (each one is wp.sh)"
+else
+  fail "no markdown gives a bare wp command to run with the shell (each one is wp.sh)"
+  printf '%s\n' "$shell_wp" | sed "s#^$ROOT/##; s/^/       /" | cut -c1-220
+fi
+if grep -qF 'config list' "$ACCESS" && grep -qiE 'refuses?' "$ACCESS"; then
+  pass "shell-access.md says wp.sh refuses the commands that would print a password (config list, config get)"
+else
+  fail "shell-access.md says wp.sh refuses the commands that would print a password (config list, config get)"
 fi
 
 LEARN="$SKILL_DIR/learnings.md"
@@ -92,7 +137,7 @@ fi
 # uses --prompt sends wp's stdout to /dev/null on the same line.
 stale 'a password kept in a shell variable between steps (NEWPASS)' 'NEWPASS'
 stale 'a password on wp-cli'"'"'s command line (--user_pass=)' '\-\-user_pass='
-md_prompt="$(grep -nHE -- '--prompt=' $(printf '%s\n' "${files[@]}" | grep '\.md$') || true)"
+md_prompt="$(grep -nHE -- '--prompt=' "${md_files[@]}" || true)"
 if [ -z "$md_prompt" ]; then
   pass "no markdown gives a wp --prompt= command (playbooks run scripts/temp-password.sh)"
 else

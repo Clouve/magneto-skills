@@ -73,14 +73,14 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqld
 
 ## Archiving `wp-content/` — [shell-only — probe first]
 
-Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true`. It should pass on Shape A ([shell-access.md](shell-access.md) has the failure modes). When it does:
+Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" true`. It should pass on Shape A ([shell-access.md](shell-access.md) has the failure modes). When it does:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" \
     "sudo tar -C /var/www/html --exclude='wp-content/cache/*' -czf - wp-content" \
     > "$HOME/backups/wp-content-$ts.tar.gz"
 # And the config copy:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" \
     "sudo cat /var/www/html/wp-config.php" > "$HOME/backups/wp-config-$ts.php"
 ```
 
@@ -98,7 +98,7 @@ Order matters (files first so the DB never references code/media that isn't ther
    ```
    `mysqldump` output includes `DROP TABLE IF EXISTS` per table, so the import replaces every dumped table. Tables *created after* the backup (e.g. by a since-installed plugin) survive the import — compare `SHOW TABLES` against the manifest and drop leftovers only under the schema-change gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow).
 3. **Ownership** — `chown -R www-data:www-data wp-content` **[shell-only — probe first]**; skip when no file restore happened.
-4. **Flush caches/rewrites** — **[TCP-mysql]** delete the `rewrite_rules` option (single row; WordPress regenerates it on the next request — standard behaviour) and clear expired transients per [caching.md](caching.md). With a shell: `wp cache flush && wp rewrite flush --hard`.
+4. **Flush caches/rewrites** — **[TCP-mysql]** delete the `rewrite_rules` option (single row; WordPress regenerates it on the next request — standard behaviour) and clear expired transients per [caching.md](caching.md). With a shell: `wp.sh cache flush`, then `wp.sh rewrite flush --hard` ([wp.sh](../scripts/wp.sh)).
 
 **Shape A note:** the installer entrypoint re-asserts `siteurl`/`home` from `WORDPRESS_SITE_URL` at every boot — after a restore, a platform restart both fixes a stale restored URL and hard-flushes rewrites. On Shape B nothing reconciles URLs; check them yourself (step canaries below, and [urls-and-migration.md](urls-and-migration.md)).
 

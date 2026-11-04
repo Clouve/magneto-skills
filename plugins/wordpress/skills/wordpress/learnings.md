@@ -20,6 +20,12 @@ Both Clouve-packaged images ship the `clouve-ops` sshd, as the 2026-08-05 check 
 
 ---
 
+## 2026-11-03 — Correction: wp-cli over SSH goes through scripts/wp.sh
+
+A wp command run over plain SSH had no database settings and stopped with "Error establishing a database connection". [scripts/wp.sh](scripts/wp.sh) gives it WordPress's own ([reference/shell-access.md](reference/shell-access.md)).
+
+---
+
 ## Pruning rule
 
 When a learning is now covered by a dedicated reference file or playbook, delete its entry here — git history retains the original capture. This file should not grow beyond a screenful.

@@ -90,7 +90,7 @@ Evidence this can surface: a `siteurl`/`home` mismatch (redirect trouble masquer
 
 ## Step 4: Plugin isolation — the gated no-shell fallback **[TCP-mysql]**
 
-With a shell (Shape A), prefer `sudo -u www-data wp --path=/var/www/html plugin deactivate --all --skip-plugins --skip-themes`, under the same gate below. wp-cli loads the active plugins and the theme before it runs a command, so without the two `--skip` flags a plugin that fatals on load kills the deactivation too. Without one, the documented fallback is writing the empty serialized array — one of the few serialized writes that is safe, because the value is a known constant. This is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): "Deactivate all plugins"): **record the current value first**, print the exact SQL, and wait for the user's ack.
+With a shell (Shape A), prefer `wp.sh plugin deactivate --all --skip-plugins --skip-themes` ([wp.sh](../scripts/wp.sh)), under the same gate below. wp-cli loads the active plugins and the theme before it runs a command, so without the two `--skip` flags a plugin that fatals on load kills the deactivation too. Without one, the documented fallback is writing the empty serialized array — one of the few serialized writes that is safe, because the value is a known constant. This is **gated** ([SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow): "Deactivate all plugins"): **record the current value first**, print the exact SQL, and wait for the user's ack.
 
 1. **Record the current value** (Step 3 already did — confirm you have the exact string saved somewhere durable in the conversation):
    ```sql

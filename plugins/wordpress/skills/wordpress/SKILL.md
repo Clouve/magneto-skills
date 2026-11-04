@@ -2,7 +2,7 @@
 name: wordpress
 description: Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions "WordPress", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.
 type: devops
-version: 0.1.5
+version: 0.1.6
 authoredAgainst: wordpress v6.9.0
 ---
 
@@ -45,7 +45,7 @@ Use this skill when the user is working with a WordPress deployment on Clouve, w
 - **Two deployment shapes exist** (details in [reference/stack-and-runtime.md](reference/stack-and-runtime.md)):
   - *Clouve-packaged app* (`wordpress` + `wordpress-mariadb` containers): pinned `wordpress:6.9.0` base with wp-cli at `/usr/local/bin/wp`, a mysql client, PHP limits raised (512M memory, 100M uploads), and the installer entrypoint (`/clouve/wordpress/installer/entrypoint.sh`) that auto-installs, reconciles `siteurl`/`home` from `WORDPRESS_SITE_URL`, forces `WP_DEBUG_DISPLAY` off, and re-chowns `wp-content/uploads` — on every boot. Both containers run the `clouve-ops` sshd. Database is MariaDB (`mariadb:12.3`).
   - *Developer-submitted compose* (service names vary; e.g. vanilla `wordpress:6.8-apache` + `mysql:8.0`): no SSH server, no wp-cli, no mysql client in the web container, stock entrypoint (first boot serves the browser installer; nothing reconciles URLs). `MYSQL_RANDOM_ROOT_PASSWORD` is common — you have the app-scoped DB user only, and root access does not exist for anyone.
-- Channels from the agent container: `mysql`/`mysqldump` over TCP to the DB sibling, `curl` to the WordPress sibling on port 80, and — where the sibling image ships the `clouve-ops` SSH account, as both Shape A images do — `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@<host>`. Probe, don't assume: [reference/shell-access.md](reference/shell-access.md).
+- Channels from the agent container: `mysql`/`mysqldump` over TCP to the DB sibling, `curl` to the WordPress sibling on port 80, and — where the sibling image ships the `clouve-ops` SSH account, as both Shape A images do — `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@<host>`. Probe, don't assume: [reference/shell-access.md](reference/shell-access.md). Run wp-cli through `/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh <wp arguments>`, written `wp.sh` in these docs: it gives wp the database settings that a plain SSH session doesn't have.
 
 ## What the Clouve installer entrypoint does (the things that bite operators)
 
@@ -53,7 +53,7 @@ The packaged image's boot sequence is not the stock one. Full detail in [referen
 
 - **`siteurl`/`home` are re-asserted from `WORDPRESS_SITE_URL` every boot** (then `wp rewrite flush --hard`). Only those two options — embedded content URLs still need a deliberate `wp search-replace`. Never fight the reconciler; domain changes go through the platform.
 - **`WP_DEBUG_DISPLAY` is forced off every boot.** Turn debugging on via `WP_DEBUG` + `WP_DEBUG_LOG`, with the log sent to `/tmp/wp-debug.log` (`wp-content/debug.log` can be fetched by anyone), instead of expecting display output to persist — but note that enabling those is a `wp-config.php` change, **[shell-only — probe first]**, under the wp-config gate (see [reference/configuration.md](reference/configuration.md)); without a shell (Shape B, or a failed probe), diagnose from DB/HTTP evidence per [playbooks/diagnose-500.md](playbooks/diagnose-500.md).
-- **`wp-content/uploads` is `chown -R www-data` + `chmod -R 755` every boot** — nothing else in `wp-content` is. Root-owned files left by `--allow-root` wp-cli operations elsewhere persist and break updates later; run wp-cli as `www-data` (`sudo -u www-data wp --path=/var/www/html …`), and chown after any run as root.
+- **`wp-content/uploads` is `chown -R www-data` + `chmod -R 755` every boot** — nothing else in `wp-content` is. Root-owned files left by `--allow-root` wp-cli operations elsewhere persist and break updates later; run wp-cli as `www-data`, as `wp.sh` does, and chown after any run as root.
 - **Install detection probes the hardcoded `wp_options` table** (ignores `WORDPRESS_TABLE_PREFIX` — principle 10).
 - **The boot script runs `set +e`** — a half-failed install still `exec`s Apache. A "running" pod does not mean a healthy install; verify with [scripts/verify-health.sh](scripts/verify-health.sh), not liveness alone.
 - **There is no system cron in either image.** `wp-cron.php` fires on HTTP traffic only (the packaged healthcheck's 10s probe keeps it warm-ish). Missed schedules on a quiet site are expected, not a bug. See [reference/cron-and-tasks.md](reference/cron-and-tasks.md).

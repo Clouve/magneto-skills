@@ -30,17 +30,17 @@ Shape A wraps this entrypoint untouched, then post-processes with wp-cli — see
 | `SCRIPT_DEBUG` | `false` | Serve unminified core JS/CSS. Dev-only. |
 | `SAVEQUERIES` | `false` | Record every DB query per request. Heavy — dev-only, never leave on. |
 
-**Shape A truthiness caveat (unverified — flag before relying on it).** The official template evaluates `WP_DEBUG` as `!!getenv_docker('WORDPRESS_DEBUG', '')`, i.e. *any non-empty string is true*. The Clouve manifest sets `WORDPRESS_DEBUG='false'` — a non-empty string — so if that value passed through the stock generator, `WP_DEBUG` may effectively be **on** with display suppressed on Shape A. No one has read a generated file to confirm it. On Shape A, check before relying on it: over the shell, `sudo -u www-data wp --path=/var/www/html eval 'var_export(WP_DEBUG);'` prints `true` or `false` and nothing else. Until you have, treat Shape A's debug state as unknown-but-quiet.
+**Shape A truthiness caveat (unverified — flag before relying on it).** The official template evaluates `WP_DEBUG` as `!!getenv_docker('WORDPRESS_DEBUG', '')`, i.e. *any non-empty string is true*. The Clouve manifest sets `WORDPRESS_DEBUG='false'` — a non-empty string — so if that value passed through the stock generator, `WP_DEBUG` may effectively be **on** with display suppressed on Shape A. No one has read a generated file to confirm it. On Shape A, check before relying on it: over the shell, `wp.sh eval 'var_export(WP_DEBUG);'` ([wp.sh](../scripts/wp.sh)) prints `true` or `false` and nothing else. Until you have, treat Shape A's debug state as unknown-but-quiet.
 
 What you can do, per channel:
 
 - **[HTTP]** `curl -sf "http://${WORDPRESS_HOST}/wp-content/debug.log" | tail -50` — `debug.log` sits inside the docroot, so on a default Apache setup it is fetchable if logging was ever enabled. A 404 means no log (or blocked), not "no errors". Its public fetchability is also a leak — see [security.md](security.md).
 - **Flipping `WP_DEBUG` / `WP_DEBUG_LOG`** is a wp-config edit, **[shell-only — probe first]**, under the wp-config gate (show the change, get the ack). Send the log to a file outside the docroot: `wp-content/debug.log` is in it, and anyone can fetch it over HTTP.
   ```bash
-  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" \
-      'sudo -u www-data wp --path=/var/www/html config set WP_DEBUG true --raw && sudo -u www-data wp --path=/var/www/html config set WP_DEBUG_LOG /tmp/wp-debug.log'
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh config set WP_DEBUG true --raw \
+      && /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh config set WP_DEBUG_LOG /tmp/wp-debug.log
   ```
-  `WP_DEBUG_LOG` takes the path as a string, so it gets no `--raw`. Reproduce the error once, then read the end of the log over the same channel with `sudo tail -n 50 /tmp/wp-debug.log`. Turn both off again once you have the error (`config set WP_DEBUG false --raw`, `config set WP_DEBUG_LOG false --raw`). If a `wp-content/debug.log` exists from an earlier time logging was on, anyone can fetch it: tell the user, and delete it once they agree (a delete, so show the command and get the ack). Without a shell (Shape B, or a failed probe), work the problem from DB + HTTP evidence instead per [playbooks/diagnose-500.md](../playbooks/diagnose-500.md), or route the user to Clouve support if a debug-enabled boot is genuinely required.
+  `WP_DEBUG_LOG` takes the path as a string, so it gets no `--raw`. Reproduce the error once, then read the end of the log over the shell with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" 'sudo tail -n 50 /tmp/wp-debug.log'`. Turn both off again once you have the error (`wp.sh config set WP_DEBUG false --raw`, `wp.sh config set WP_DEBUG_LOG false --raw`). If a `wp-content/debug.log` exists from an earlier time logging was on, anyone can fetch it: tell the user, and delete it once they agree (a delete, so show the command and get the ack). Without a shell (Shape B, or a failed probe), work the problem from DB + HTTP evidence instead per [playbooks/diagnose-500.md](../playbooks/diagnose-500.md), or route the user to Clouve support if a debug-enabled boot is genuinely required.
 
 ## `WP_HOME` / `WP_SITEURL` vs the database
 
@@ -73,7 +73,7 @@ Per [SKILL.md](../SKILL.md) principle 10 and its gate: **refuse** prefix changes
 Eight constants (`AUTH_KEY`, `SECURE_AUTH_KEY`, `LOGGED_IN_KEY`, `NONCE_KEY` + their four `_SALT` twins) sign login cookies and nonces. On both shapes they were randomly generated at first boot and live only in `wp-config.php` on the volume — they persist across restarts.
 
 - Rotating them invalidates every login cookie site-wide (everyone re-logs-in). That is sometimes exactly what you want after a suspected credential leak.
-- Rotation is a wp-config edit: **[shell-only — probe first]** `sudo -u www-data wp --path=/var/www/html config shuffle-salts`, under the wp-config gate. **No live TCP/HTTP path exists**, and there is no wp-admin UI for it either. Without a shell (Shape B, or a failed probe): route to support, or use the session-invalidation alternatives in [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md).
+- Rotation is a wp-config edit: **[shell-only — probe first]** `wp.sh config shuffle-salts`, under the wp-config gate. **No live TCP/HTTP path exists**, and there is no wp-admin UI for it either. Without a shell (Shape B, or a failed probe): route to support, or use the session-invalidation alternatives in [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md).
 - Never print or paste salt values into chat.
 
 ## Memory limits
@@ -97,7 +97,7 @@ Raising the ceiling means editing PHP ini or wp-config — **[shell-only — pro
 | `DISALLOW_FILE_EDIT` | Removes the theme/plugin code editors from `/wp-admin`. Recommended on every production site. |
 | `DISALLOW_FILE_MODS` | Also blocks plugin/theme *installs and updates* from wp-admin — stronger, and usually too strong here, since wp-admin is how the tenant installs and updates plugins (on Shape B, the only way). |
 
-Neither is set on either Clouve shape (nothing in the manifest or entrypoint adds them). Setting one requires wp-config access: **[shell-only — probe first]** `sudo -u www-data wp --path=/var/www/html config set DISALLOW_FILE_EDIT true --raw` on Shape A, under the wp-config gate. There is **no TCP or HTTP fallback** (these are PHP constants, not options rows), so without a shell (Shape B, or a failed probe): recommend it, say it can't be applied from here, and compensate with strong admin credentials and role hygiene ([security.md](security.md)).
+Neither is set on either Clouve shape (nothing in the manifest or entrypoint adds them). Setting one requires wp-config access: **[shell-only — probe first]** `wp.sh config set DISALLOW_FILE_EDIT true --raw` on Shape A, under the wp-config gate. There is **no TCP or HTTP fallback** (these are PHP constants, not options rows), so without a shell (Shape B, or a failed probe): recommend it, say it can't be applied from here, and compensate with strong admin credentials and role hygiene ([security.md](security.md)).
 
 ## Other constants you will meet
 
@@ -122,6 +122,6 @@ Neither is set on either Clouve shape (nothing in the manifest or entrypoint add
 | `WP_MEMORY_LIMIT` / PHP limits | wp-config / php.ini | None — and resource ceilings are platform territory (principle 11). | ini/wp-config edit, gated. |
 | Site title, tagline, admin email, timezone, … | `wp_options` scalar rows | `/wp-admin` Settings (user's route) or gated [TCP-mysql] scalar update — see [data-model.md](data-model.md). | `wp option update <name> <value>` |
 
-In the last column, run each `wp` command over SSH as `sudo -u www-data wp --path=/var/www/html …` ([shell-access.md](shell-access.md)).
+In the last column, run each `wp` command through `wp.sh` ([shell-access.md](shell-access.md)), for example `wp.sh config set DISALLOW_FILE_EDIT true --raw`.
 
 The last row is the general rule worth internalizing: most things users call "settings" are **not** in `wp-config.php` at all — they are `wp_options` rows, which you *can* reach on either shape. [data-model.md](data-model.md) is the map of which of those are safe.

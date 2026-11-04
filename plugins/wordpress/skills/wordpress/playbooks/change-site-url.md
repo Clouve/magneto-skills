@@ -45,14 +45,12 @@ If they still show the old URL: the container hasn't restarted with the new env 
 
 The reconciler touches only the two options. Links, `<img src>` in posts, widget config, and theme mods still carry the old URL (see [reference/urls-and-migration.md](../reference/urls-and-migration.md) for where they live).
 
-**[shell-only — probe first]** The right tool is wp-cli's serialization-aware search-replace, which this image ships. Run it over the shell into the `wordpress` container: both packaged images ship the `clouve-ops` account, so the probe in [reference/shell-access.md](../reference/shell-access.md) should pass. When it does:
+**[shell-only — probe first]** The right tool is wp-cli's serialization-aware search-replace, which this image ships. Run it in the `wordpress` container through [wp.sh](../scripts/wp.sh): both packaged images ship the `clouve-ops` account, so the probe in [reference/shell-access.md](../reference/shell-access.md) should pass. When it does:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
-  "sudo -u www-data wp --path=/var/www/html search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run"
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run
 # show the dry-run output to the user (safety gate), get ack, re-run without --dry-run, then:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
-  "sudo -u www-data wp --path=/var/www/html cache flush"
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh cache flush
 ```
 
 **Without a shell (the probe failed), the honest options are:**

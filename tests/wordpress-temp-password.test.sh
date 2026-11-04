@@ -34,6 +34,21 @@
 # six months), and says it couldn't confirm the sign-in otherwise; and fails when the answer's
 # session cookie reaches the output or is left in a file.
 #
+# Two gaps the rig showed on 2026-11-03 (wordpress 0.1.6):
+# - wp-cli over the clouve-ops shell had no database settings. The official image's wp-config.php
+#   reads them from the environment, and an SSH session doesn't inherit the container's. So wp
+#   stopped with "Error establishing a database connection" and nothing changed. The stand-in ssh
+#   now gives the session a clean environment, as sshd does, the stand-in sudo resets it as a
+#   stock sudoers does, and the stand-in wp can't connect without the WORDPRESS_DB_* values of the
+#   container's first process ($FAKE_STATE/pid1-environ stands in for /proc/1/environ). Fails
+#   unless wp gets those values in its environment, with none of them on a command line or in an
+#   output, and nothing but the WORDPRESS_* settings.
+# - The sign-in check posted to the container's own address over plain HTTP. When the site's
+#   address is https, WordPress forces SSL for wp-login.php and redirects there before it checks
+#   the password, so the check could never confirm a sign-in. The stand-in curl answers that way.
+#   Fails unless the check posts to the site's own https address, and keeps an http or missing
+#   site address on the container's own address, so a password sent in clear stays in the cluster.
+#
 # No network and no Docker: the script runs under `env -i` with the stand-ins first on PATH, and
 # everything is written under mktemp -d.
 #
@@ -65,7 +80,8 @@ mkdir -p "$bin"
 # $FAKE_STATE/env.
 cat > "$bin/sshpass" <<'EOF'
 #!/usr/bin/env bash
-printf 'sshpass %s\n' "$*" >> "$FAKE_STATE/argv"
+all="$*"
+printf 'sshpass %s\n' "${all//$'\n'/\\n}" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
 [ "${1:-}" = "-e" ] || { echo "fake sshpass: wants -e" >&2; exit 2; }
 [ -n "${SSHPASS:-}" ] || { echo "fake sshpass: SSHPASS is empty" >&2; exit 5; }
@@ -75,10 +91,14 @@ exec "$@"
 EOF
 
 # ssh runs the remote command with a local bash, so a redirection in it works as it would there,
-# and keeps a copy of what comes back over the channel in $FAKE_STATE/ssh-stdout.
+# and keeps a copy of what comes back over the channel in $FAKE_STATE/ssh-stdout. The command runs
+# in a clean environment, as sshd gives a session: none of the agent's variables, only the
+# session's own and the test's FAKE_* controls.
 cat > "$bin/ssh" <<'EOF'
 #!/usr/bin/env bash
-printf 'ssh %s\n' "$*" >> "$FAKE_STATE/argv"
+# One line per call: the newlines of a remote script are logged as \n.
+all="$*"
+printf 'ssh %s\n' "${all//$'\n'/\\n}" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -94,23 +114,81 @@ if [ "${FAKE_SSH:-ok}" = refused ]; then
   echo "ssh: connect to host ${target#*@} port 22: Connection refused" >&2
   exit 255
 fi
-bash -c "$*" | tee -a "$FAKE_STATE/ssh-stdout"
-exit "${PIPESTATUS[0]}"
+mapfile -t controls < <(env | grep -E '^FAKE_[A-Z_]*=' || true)
+env -i PATH="$PATH" HOME=/home/clouve-ops USER=clouve-ops LOGNAME=clouve-ops SHELL=/bin/bash \
+  "${controls[@]}" bash -c "$*" 2> "$FAKE_STATE/ssh-stderr.now" | tee -a "$FAKE_STATE/ssh-stdout"
+rc="${PIPESTATUS[0]}"
+# What the remote side said on stderr comes back too; a copy is kept in $FAKE_STATE/ssh-stderr.
+cat "$FAKE_STATE/ssh-stderr.now" >> "$FAKE_STATE/ssh-stderr"
+cat "$FAKE_STATE/ssh-stderr.now" >&2
+rm -f "$FAKE_STATE/ssh-stderr.now"
+exit "$rc"
 EOF
 
+# sudo resets the environment, as a stock sudoers does (env_reset): the command keeps PATH, the
+# test's FAKE_* controls and only the names --preserve-env lists (all of it with -E), and gets the
+# target user's HOME, USER and LOGNAME. The container's /proc/1/environ is $FAKE_STATE/pid1-environ
+# here; with FAKE_ENVIRON=denied it can't be read. Each target user goes to $FAKE_STATE/sudo-users.
 cat > "$bin/sudo" <<'EOF'
 #!/usr/bin/env bash
 printf 'sudo %s\n' "$*" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
-if [ "${1:-}" = "-u" ]; then shift 2; fi
-exec "$@"
+user=root keep_all=0 keep=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -n | -H) shift ;;
+    -E) keep_all=1; shift ;;
+    -u) user="${2:-}"; shift 2 ;;
+    --preserve-env=*) keep="${1#*=}"; shift ;;
+    --) shift; break ;;
+    -*) echo "fake sudo: unknown option $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+printf '%s\n' "$user" >> "$FAKE_STATE/sudo-users"
+args=()
+for a in "$@"; do
+  if [ "$a" = /proc/1/environ ]; then
+    if [ "${FAKE_ENVIRON:-ok}" = denied ]; then
+      echo "cat: /proc/1/environ: Permission denied" >&2
+      exit 1
+    fi
+    a="$FAKE_STATE/pid1-environ"
+    # A command run here with the channel's stdin still open could read the line meant for wp (the new
+    # password). This one takes a line from it then, as such a command would.
+    if [ "$(readlink "/proc/$$/fd/0")" != /dev/null ]; then IFS= read -r _ || true; fi
+  fi
+  args+=("$a")
+done
+if [ "$keep_all" -eq 0 ]; then
+  keepers=" PATH ${keep//,/ } "
+  for v in $(compgen -e); do
+    case "$v" in FAKE_*) continue ;; esac
+    case "$keepers" in *" $v "*) continue ;; esac
+    unset "$v"
+  done
+fi
+export HOME="/home/$user" USER="$user" LOGNAME="$user"
+exec "${args[@]}"
 EOF
 
-# wp-cli with PHP's readline: the prompt and the value it reads both go to stdout.
+# wp-cli with PHP's readline: the prompt and the value it reads both go to stdout. Before that, wp
+# loads wp-config.php, and the official image's wp-config.php reads the database settings from the
+# environment (getenv_docker): without the values the container's first process has, wp can't
+# connect and stops before it reads anything. Its environment goes to $FAKE_STATE/wp-env (NUL
+# separated).
 cat > "$bin/wp" <<'EOF'
 #!/usr/bin/env bash
 printf 'wp %s\n' "$*" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
+env -0 > "$FAKE_STATE/wp-env"
+for name in WORDPRESS_DB_HOST WORDPRESS_DB_USER WORDPRESS_DB_PASSWORD WORDPRESS_DB_NAME; do
+  expected="$(tr '\0' '\n' < "$FAKE_STATE/pid1-environ" | grep -m1 "^$name=" | cut -d= -f2-)"
+  if [ -z "$expected" ] || [ "${!name:-}" != "$expected" ]; then
+    echo "Error: Error establishing a database connection." >&2
+    exit 1
+  fi
+done
 IFS= read -r value || true
 printf '%s' "$value" > "$FAKE_STATE/wp-stdin"
 printf '1/1 --user_pass=<password>: %s\n' "$value"
@@ -178,7 +256,15 @@ esac
 EOF
 
 # curl answers the sign-in check the way WordPress does. It writes the response headers to the
-# file -D names and prints the status code. FAKE_SIGN_IN picks the answer:
+# file -D names and prints the status code. Where the check posts decides first. FAKE_SITE is the
+# site's own address (WordPress's siteurl; default https://blog.example.test):
+#   FAKE_SITE/wp-login.php        WordPress answers as FAKE_SIGN_IN says (below)
+#   http://wp-host/wp-login.php   the WordPress container's own address, over plain HTTP. With an
+#                                 https site, WordPress forces SSL for wp-login.php and redirects
+#                                 before it checks the password, with no cookie (the force-ssl
+#                                 answer below); with an http site it answers as FAKE_SIGN_IN says
+#   anything else                 no such host: curl prints 000 and exits 6
+# FAKE_SIGN_IN picks the answer:
 #   wp-admin     (default) the password works: 302 to wp-admin, with the logged-in cookie
 #   admin-email  the password works, and WordPress first sends an administrator to confirm the
 #                site's admin email, as it does every six months: 302 to
@@ -195,7 +281,7 @@ cat > "$bin/curl" <<'EOF'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
-headers=""
+headers="" url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -D | --dump-header) headers="${2:-}"; shift 2 ;;
@@ -203,15 +289,25 @@ while [ "$#" -gt 0 ]; do
       [ "${2:-}" = "pwd@-" ] && cat > "$FAKE_STATE/curl-stdin"
       shift 2
       ;;
-    *) shift ;;
+    -o | -w | -b | -H | --max-time | --proto | --proto-redir | --noproxy) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
   esac
 done
-site="https://blog.example.test"
+site="${FAKE_SITE:-https://blog.example.test}"
+answer="${FAKE_SIGN_IN:-wp-admin}"
+case "$url" in
+  "$site/wp-login.php") ;;
+  http://wp-host/wp-login.php) case "$site" in https://*) answer=force-ssl ;; esac ;;
+  *) printf '000'; exit 6 ;;
+esac
+# badcert: the site's certificate can't be checked (curl exit 60)
+if [ "$answer" = badcert ]; then printf '000'; exit 60; fi
 session="admin%7C1762300000%7Cfake-session-token-5d2c%7Cfakehmac"
 test_cookie="Set-Cookie: wordpress_test_cookie=WP%20Cookie%20check; path=/"
 auth="Set-Cookie: wordpress_0123abcd=$session; path=/wp-admin; HttpOnly"
 logged_in="Set-Cookie: wordpress_logged_in_0123abcd=$session; path=/; HttpOnly"
-case "${FAKE_SIGN_IN:-wp-admin}" in
+case "$answer" in
   wp-admin) code=302 lines=("$test_cookie" "$auth" "$logged_in" "Location: $site/wp-admin/") ;;
   admin-email)
     code=302
@@ -244,6 +340,26 @@ chmod +x "$bin"/*
 
 # --- Running the script --------------------------------------------------------------------
 
+CONFIG_EXTRA="$(printf "WORDPRESS_CONFIG_EXTRA=define('WP_POST_REVISIONS', 5);\ndefine('WP_MEMORY_LIMIT', '256M');")"
+
+# wp_env NAME: the value NAME had in the stand-in wp's environment, NUL-safe (a missing NAME prints
+# nothing and fails)
+wp_env() {
+  python3 - "$state/wp-env" "$1" <<'PY'
+import sys
+try:
+    data = open(sys.argv[1], "rb").read().decode()
+except OSError:
+    sys.exit(1)
+for entry in data.split("\0"):
+    name, sep, value = entry.partition("=")
+    if sep and name == sys.argv[2]:
+        sys.stdout.write(value)
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
 # run CASE [VAR=VALUE...] -- ARGS...: runs the script for CASE with its own home and state.
 # Leaves $state, $home, $out, $err and $rc.
 run() {
@@ -257,11 +373,20 @@ run() {
   err="$work/$name/err"
   mkdir -p "$state" "$home"
   : > "$state/argv"
-  rm -f "$state/hash-reads"
+  rm -f "$state/hash-reads" "$state/wp-env" "$state/sudo-users"
   echo "hash-before" > "$state/user_pass"
   # The accounts the lookup finds, unless the case wrote its own: admin is 61 64 6d 69 6e (ID 5),
   # o'brien is 6f 27 62 72 69 65 6e (ID 7).
   [ -f "$state/accounts" ] || printf '61646d696e\t5\n6f27627269656e\t7\n' > "$state/accounts"
+  # The WordPress container's own environment, as its first process has it: NUL-separated, with
+  # values that differ from the agent's, a setting that spans two lines, a name bash can't export,
+  # and the container's clouve-ops password, which must not reach wp.
+  printf '%s\0' PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOSTNAME=tkt-5-wordpress \
+    WORDPRESS_DB_HOST=tkt-5-wordpress-mariadb WORDPRESS_DB_USER=wordpress WORDPRESS_DB_NAME=wordpress \
+    WORDPRESS_DB_PASSWORD=container-db-secret WORDPRESS_TABLE_PREFIX=wp_ \
+    WORDPRESS_SITE_URL=https://blog.example.test "$CONFIG_EXTRA" WORDPRESS_X.Y=1 \
+    WORDPRESS_ADMIN_PASSWORD=container-admin-secret \
+    CLOUVE_OPS_PASSWORD=container-ops-secret APACHE_RUN_USER=www-data > "$state/pid1-environ"
   env -i HOME="$home" PATH="$bin:/usr/bin:/bin" TMPDIR="$work" LANG=C.UTF-8 FAKE_STATE="$state" \
     WORDPRESS_DB_HOST=wp-db WORDPRESS_DB_USER=wpuser WORDPRESS_DB_NAME=wpdb \
     WORDPRESS_HOST=wp-host WORDPRESS_SITE_URL=https://blog.example.test \
@@ -273,8 +398,9 @@ run() {
 # password_files: the .txt files in this case's ~/wordpress-passwords, one per line
 password_files() { find "$home/wordpress-passwords" -maxdepth 1 -type f -name '*.txt' 2> /dev/null | sort; }
 
-# password_in FILE: the line after "Temporary password:" in FILE
-password_in() { awk 'f { print; exit } /^Temporary password:$/ { f = 1 }' "$1"; }
+# password_in FILE: the line after "Temporary password:" in FILE. Fails when FILE isn't a file
+# (awk would read stdin for an empty name, and the test would wait for ever).
+password_in() { [ -f "${1:-}" ] || return 1; awk 'f { print; exit } /^Temporary password:$/ { f = 1 }' "$1"; }
 
 # leaks PW: every place PW shows up outside the file and the stdin captures. ssh-stdout is what
 # came back from the WordPress container over SSH, where wp printed what it read; env holds the
@@ -311,15 +437,26 @@ if [ -n "$pw" ]; then
 fi
 check "wp got the password on its stdin" '[ -n "$pw" ] && [ "$(cat "$state/wp-stdin" 2> /dev/null)" = "$pw" ]'
 check "wp changed the account by its ID, as www-data" \
-  'grep -qx "sudo -u www-data wp --path=/var/www/html user update 5 --prompt=user_pass" "$state/argv"'
+  'grep -qE "^sudo .*-u www-data wp --path=/var/www/html user update 5 --prompt=user_pass$" "$state/argv" && grep -qx www-data "$state/sudo-users"'
+check "wp got the database settings of the WordPress container's first process, in its environment" \
+  '[ "$(wp_env WORDPRESS_DB_HOST)" = tkt-5-wordpress-mariadb ] && [ "$(wp_env WORDPRESS_DB_PASSWORD)" = container-db-secret ] && [ "$(wp_env WORDPRESS_TABLE_PREFIX)" = wp_ ]'
+check "a WordPress setting whose value spans two lines reaches wp whole" \
+  '[ "WORDPRESS_CONFIG_EXTRA=$(wp_env WORDPRESS_CONFIG_EXTRA)" = "$CONFIG_EXTRA" ]'
+check "only WordPress's settings reach wp: not the container's clouve-ops or admin password" \
+  '! wp_env CLOUVE_OPS_PASSWORD > /dev/null && ! grep -qaF -e container-ops-secret -e container-admin-secret "$state/wp-env"'
+check "a setting with a name bash can't export is skipped without an error, on either side" \
+  '! grep -qi "not a valid identifier" "$err" "$state/ssh-stderr" 2> /dev/null'
+check "the container's database password is on no command line and in no output, nor in what came back on stderr" \
+  '! grep -qF container-db-secret "$state/argv" "$out" "$err" "$state/ssh-stdout" "$state/ssh-stderr" 2> /dev/null'
 check "ssh keeps and checks no saved host key" \
   'grep -E "^ssh " "$state/argv" | grep -F -- "-o StrictHostKeyChecking=accept-new" | grep -qF -- "-o UserKnownHostsFile=/dev/null"'
 check "ssh went to clouve-ops on the WordPress host" 'grep -qx "clouve-ops@wp-host" "$state/ssh-targets"'
 check "the sign-in check got the password on curl's stdin" \
   '[ -n "$pw" ] && [ "$(cat "$state/curl-stdin" 2> /dev/null)" = "$pw" ]'
-check "the sign-in check posts to the WordPress host's wp-login.php" \
-  'grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php"'
+check "the sign-in check posts to the site's own address, https://blog.example.test/wp-login.php" \
+  'grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/wp-login.php" && ! grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/"'
 check "stdout says WordPress took the password at sign-in" 'grep -qi "accepted" "$out"'
+check "curl ignores ~/.curlrc (-q comes first)" 'grep -qE "^curl -q " "$state/argv"'
 check "the deployment's own passwords stay off every command line" \
   '! grep -qF -e db-secret -e ops-secret "$state/argv"'
 check "sshpass and mysql got the deployment's passwords in their environment" \
@@ -342,6 +479,34 @@ check "mysql got the MD5 write on its stdin, for ID 5 only" \
 check "no ssh was run" '! grep -qE "^(ssh|sshpass) " "$state/argv"'
 check "the sign-in check got the password on curl's stdin" \
   '[ -n "$pw" ] && [ "$(cat "$state/curl-stdin" 2> /dev/null)" = "$pw" ]'
+check "the sign-in check posts to the site's own address, and stdout says WordPress took the password" \
+  'grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/wp-login.php" && grep -qi "accepted" "$out"' \
+  || show "$out"
+
+echo
+echo "Where the sign-in check posts"
+run subdir WORDPRESS_SITE_URL=https://blog.example.test/news/ FAKE_SITE=https://blog.example.test/news -- admin
+check "a site in a folder: the check posts to https://blog.example.test/news/wp-login.php and WordPress accepts it" \
+  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/news/wp-login.php" && grep -qi "accepted" "$out"' \
+  || show "$out" "$err"
+run httpsite WORDPRESS_SITE_URL=http://blog.example.test FAKE_SITE=http://blog.example.test -- admin
+check "an http site: the check stays on the container's own address, so the password crosses no other network in clear" \
+  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && ! grep -E "^curl " "$state/argv" | grep -qF "http://blog.example.test" && grep -qi "accepted" "$out"' \
+  || show "$out" "$err"
+check "  and that post to the container goes through no proxy" 'grep -E "^curl " "$state/argv" | grep -qF -- "--noproxy *"'
+run nohostname WORDPRESS_SITE_URL=https://elsewhere.example.test -- admin
+check "the site's address doesn't resolve from here: exit 0, and the line says so" \
+  '[ "$rc" -eq 0 ] && grep -qi "couldn.t confirm the sign-in" "$out" && grep -qi "resolve" "$out"' || show "$out" "$err"
+run badcert FAKE_SIGN_IN=badcert -- admin
+check "the site's certificate can't be checked: exit 0, and the line says so" \
+  '[ "$rc" -eq 0 ] && grep -qi "couldn.t confirm the sign-in" "$out" && grep -qi "certificate" "$out"' || show "$out" "$err"
+run nosite WORDPRESS_SITE_URL= -- admin
+pw="$(password_in "$(password_files | head -n 1)" 2> /dev/null || true)"
+check "no site address: the check posts to the container's own address, and with an https site it can't confirm (exit 0)" \
+  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qi "couldn.t confirm the sign-in" "$out"' \
+  || show "$out" "$err"
+check "  and the file is kept, with no sign-in page line and the password in no output" \
+  '[ -n "$pw" ] && ! grep -q "^Sign in at:" "$(password_files | head -n 1)" && [ -z "$(leaks "$pw")" ]'
 
 echo
 echo "On an agent that keeps the passwords out of the environment"
@@ -354,7 +519,7 @@ echo
 echo "A login with a quote in it"
 run quote -- "o'brien"
 check "exits 0 and changes ID 7 (the login goes into the SQL as hex)" \
-  '[ "$rc" -eq 0 ] && grep -qx "sudo -u www-data wp --path=/var/www/html user update 7 --prompt=user_pass" "$state/argv"' \
+  '[ "$rc" -eq 0 ] && grep -qE "^sudo .*-u www-data wp --path=/var/www/html user update 7 --prompt=user_pass$" "$state/argv"' \
   || show "$err"
 
 echo
@@ -395,6 +560,11 @@ run sshdown FAKE_SSH=refused -- admin
 mapfile -t files < <(password_files)
 check "ssh can't connect: exit 2, no file left, and it suggests --via-db" \
   '[ "$rc" -eq 2 ] && [ "${#files[@]}" -eq 0 ] && grep -qF -- "--via-db" "$err"'
+run noenviron FAKE_ENVIRON=denied -- admin
+mapfile -t files < <(password_files)
+check "the container's settings can't be read: exit 2, no file left, stderr says why and suggests --via-db" \
+  '[ "$rc" -eq 2 ] && [ "${#files[@]}" -eq 0 ] && grep -qF "Permission denied" "$err" && grep -qF -- "--via-db" "$err"' \
+  || show "$err"
 run denied FAKE_MYSQL=update-denied -- --via-db admin
 mapfile -t files < <(password_files)
 check "--via-db and the UPDATE is refused: exit 2, no file left" '[ "$rc" -eq 2 ] && [ "${#files[@]}" -eq 0 ]'

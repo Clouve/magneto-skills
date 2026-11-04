@@ -82,12 +82,12 @@ mysql -h "${WORDPRESS_DB_HOST}" -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}"
 
   Expect `200` with an empty body. This runs every due event **synchronously in this request**, so give it a generous `--max-time`; a long-running plugin job can still be cut off by PHP's `max_execution_time`. Re-check the oldest-timestamp query above afterward to confirm the backlog drained.
 
-- **[shell-only — probe first]** With the shell into the Shape A container (both packaged images ship the `clouve-ops` SSH account — probe per [shell-access.md](shell-access.md)), run these there over SSH:
+- **[shell-only — probe first]** With the shell into the Shape A container (both packaged images ship the `clouve-ops` SSH account — probe per [shell-access.md](shell-access.md)), run these through [wp.sh](../scripts/wp.sh):
 
   ```bash
-  sudo -u www-data wp --path=/var/www/html cron event list           # readable schedule with next-run times
-  sudo -u www-data wp --path=/var/www/html cron event run --due-now  # run everything due
-  sudo -u www-data wp --path=/var/www/html cron event run <hook>     # run one hook surgically
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh cron event list           # readable schedule with next-run times
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh cron event run --due-now  # run everything due
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh cron event run <hook>     # run one hook surgically
   ```
 
   Shape B has no wp-cli in the image at all, shell or not.

@@ -1,6 +1,6 @@
 # Playbook: Rotate the admin password (or any user's password)
 
-Use this when the tenant has lost or wants to rotate the WordPress admin password, or wants to force a reset for a specific account. [scripts/temp-password.sh](../scripts/temp-password.sh) makes the change. It makes a strong temporary password, saves it to a private file in the agent user's home, hands it to WordPress on stdin, checks that WordPress took it, and prints only the file's name. On Shape A it uses `wp user update` over the shell (Step 2). With no shell (Shape B, or a failed probe), `--via-db` writes an MD5 value to `wp_users.user_pass` over **[TCP-mysql]**, which WordPress accepts and re-hashes at the next sign-in (Step 2, fallback).
+Use this when the tenant has lost or wants to rotate the WordPress admin password, or wants to force a reset for a specific account. [scripts/temp-password.sh](../scripts/temp-password.sh) makes the change. It makes a strong temporary password, saves it to a private file in the agent user's home, hands it to WordPress on stdin, checks that WordPress took it, and prints only the file's name. On Shape A it changes the password with wp-cli over the shell (Step 2). With no shell (Shape B, or a failed probe), `--via-db` writes an MD5 value to `wp_users.user_pass` over **[TCP-mysql]**, which WordPress accepts and re-hashes at the next sign-in (Step 2, fallback).
 
 The new password never goes into the chat, onto a command line or into a shell variable. A variable wouldn't last anyway, since each of your Bash calls starts a new shell. And wp-cli prints a password it reads on its standard input back to its standard output, so a `wp user update` you type yourself shows the password in the chat. Use the script.
 
@@ -46,7 +46,7 @@ Only if the `clouve-ops` probe from [../reference/shell-access.md](../reference/
 /clouve/skills/wordpress/plugin/skills/wordpress/scripts/temp-password.sh -- '<the-login>'
 ```
 
-The script looks the account up by its login and changes it by its ID, as `www-data`: `sudo -u www-data wp --path=/var/www/html user update <ID>`, with the password on wp's standard input and wp's output thrown away inside the WordPress container. WordPress hashes the password its normal way and logs the change, and if the site can send mail it emails the account's owner that the password changed. No `wp-content` files are touched.
+The script looks the account up by its login and changes it by its ID, as `www-data`, with `wp user update <ID>` and WordPress's own database settings, the way [wp.sh](../scripts/wp.sh) runs wp. The password goes on wp's standard input, and wp's output is thrown away inside the WordPress container. WordPress hashes the password its normal way and logs the change, and if the site can send mail it emails the account's owner that the password changed. No `wp-content` files are touched.
 
 It prints one line, for example:
 
@@ -84,7 +84,7 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql 
   "SELECT user_login, LEFT(user_pass,4) FROM wp_users WHERE user_login='<the-login>';"
 ```
 
-If the line says "Couldn't confirm the sign-in", that isn't proof of failure. An HTTP `200` means the login form came back: WordPress can turn down a request made straight to its container for its host name or its test cookie. A redirect without a sign-in comes from `FORCE_SSL_ADMIN` or from a plugin that hides `wp-login.php`, since both redirect before WordPress checks the password. The line itself means the stored password changed, so have the user try the new one in a private browser window before you conclude it failed.
+If the line says "Couldn't confirm the sign-in", that isn't proof of failure. The check signs in at the site's own address when `WORDPRESS_SITE_URL` is https, and at the WordPress container over plain HTTP otherwise. An HTTP `200` means the login form came back: WordPress, or a security plugin in front of it, can turn down a sign-in that a script makes. A redirect without a sign-in comes from a plugin that hides `wp-login.php` or, when the check goes to the container, from `FORCE_SSL_ADMIN`: both redirect before WordPress checks the password. When there was no answer, the line says why: the address doesn't resolve from the agent, the connection was refused, it timed out, or the certificate couldn't be checked. The line itself means the stored password changed, so have the user try the new one in a private browser window before you conclude it failed.
 
 ## Step 4: Hand off outside the chat
 

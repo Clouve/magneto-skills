@@ -68,10 +68,10 @@ Note that you probe the sibling over plain HTTP on :80 while real users arrive t
 
 ## Channel 3: [shell-only — probe first] — `clouve-ops` SSH
 
-**On Shape A this channel should work.** Both packaged images, `wordpress` and `wordpress-mariadb`, ship openssh-server and the `clouve-ops` account with passwordless sudo, like the moodle and gibbon images. sshd starts when `CLOUVE_OPS_PASSWORD` is set, and the platform sets it on every deployment that runs the AI Assistant, so wherever this skill runs on Shape A the channel is there. (The same images run with no sshd on a deployment without the AI Assistant, but then nothing runs this skill.) Checked on a live Kubernetes deployment on 2026-08-05: the probe passed to both containers, wp-cli answered over SSH, and [scripts/verify-health.sh](../scripts/verify-health.sh) reported GREEN. On Shape B the stock image runs no SSH server. Either way, probe first, and never write a plan whose happy path needs a channel you haven't proven:
+**On Shape A this channel should work.** Both packaged images, `wordpress` and `wordpress-mariadb`, ship openssh-server and the `clouve-ops` account with passwordless sudo, like the moodle and gibbon images. sshd starts when `CLOUVE_OPS_PASSWORD` is set, and the platform sets it on every deployment that runs the AI Assistant, so wherever this skill runs on Shape A the channel is there. (The same images run with no sshd on a deployment without the AI Assistant, but then nothing runs this skill.) Checked on a live Kubernetes deployment on 2026-08-05: the probe passed to both containers, wp-cli answered over SSH (`core version`, which needs no database), and [scripts/verify-health.sh](../scripts/verify-health.sh) reported GREEN. On Shape B the stock image runs no SSH server. Either way, probe first, and never write a plan whose happy path needs a channel you haven't proven:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
     "clouve-ops@${WORDPRESS_HOST}" true \
     && echo "shell channel: AVAILABLE" \
     || echo "shell channel: not available"
@@ -81,14 +81,18 @@ SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e s
 - On Shape B a failed probe is normal. Record it and use the TCP/HTTP path.
 - On Shape A a failed probe is a problem to report. sshd starts a little after its container does, so retry once after a short wait. If it still fails, check "Failure modes" below, tell the user what failed, and use the TCP/HTTP path meanwhile. Don't retry in a loop.
 
+Pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null` on every connection, as every command in this skill does. The two options take the key the container shows and save nothing. A rebuilt image has new host keys, and a key saved earlier is then wrong, so ssh refuses it ("REMOTE HOST IDENTIFICATION HAS CHANGED"). On an older agent, which has no SSH settings of its own for the app's containers, a command without the options also fails at the first connection: `sshpass` can't answer the yes/no prompt for a key it doesn't know, and exits 6 without printing anything.
+
 **What the shell gives you** (Shape A):
 
-- **wp-cli** at `/usr/local/bin/wp`, the preferred tool for almost everything (`wp option`, `wp user update`, `wp search-replace --dry-run`, `wp core update-db`). Run it as the web server's user, so whatever it writes belongs to `www-data`:
+- **wp-cli** at `/usr/local/bin/wp`, the preferred tool for almost everything (`wp option`, `wp user update`, `wp search-replace --dry-run`, `wp core update-db`). Run it through [scripts/wp.sh](../scripts/wp.sh), written `wp.sh` in these docs:
   ```bash
-  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
-      "sudo -u www-data wp --path=/var/www/html core version"
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh core version
+  /clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh option get siteurl
   ```
-  That form printed `6.9` on the 2026-08-05 check. Avoid `--allow-root`: the root-owned files it leaves behind persist and break later updates. If root was unavoidable, `sudo chown -R www-data:www-data` the paths it touched.
+  It runs `wp --path=/var/www/html` as the web server's user, so whatever it writes belongs to `www-data`, and it gives wp WordPress's own database settings. An SSH session doesn't have them: the image's `wp-config.php` reads them from the container's environment, which sshd doesn't pass on, so a wp command you run over SSH yourself stops with `Error establishing a database connection` as soon as it needs the database. `wp.sh` takes the settings `wp-config.php` reads (the `WORDPRESS_DB_*` names, the table prefix, the keys and salts) from the environment of the container's first process (`/proc/1/environ`, read with sudo) and hands them to wp in its environment, so no value appears on a command line. It quotes each argument for you, passes wp's output and exit code through, and keeps no host key. Its stdin is closed, so nothing can be piped into it. `core version` needs no database, which is why it worked on the 2026-08-05 check.
+  Since wp sees the real settings, a command that prints `wp-config.php`'s constants would put the database password, a key or a salt into the chat. `wp.sh` refuses `config list` and `config get` of `DB_PASSWORD` or any `*_KEY` or `*_SALT`. To see whether a constant is set, use `wp.sh config has <NAME>`, and for the names, `wp.sh config list --fields=name`. Don't print wp's environment or `phpinfo()` with `wp.sh eval` either: it holds the database password.
+  Avoid `--allow-root`: the root-owned files it leaves behind persist and break later updates. If root was unavoidable, `sudo chown -R www-data:www-data` the paths it touched.
 - **File operations**: enabling `WP_DEBUG_LOG` with the log outside the docroot ([configuration.md](configuration.md)), removing a stuck `.maintenance`, gated `wp-config.php` edits, `chown -R www-data wp-content`, inspecting plugin/theme directories.
 - **Not historic Apache logs**: in official-image derivatives the Apache error/access logs stream to container stderr (the files under `/var/log/apache2/` are typically links to the process's stderr), so even a shell does not buy you scrollback. `debug.log` is the readable artifact, and only once `WP_DEBUG_LOG` is on.
 
@@ -101,7 +105,7 @@ On Shape B there is no shell, and the stock web image has **no wp-cli and no mys
 | `Connection refused` right after the pod or a container started | sshd isn't up yet. Retry after a few seconds. |
 | `Connection refused` that persists | Shape B: there is no sshd, which is normal. Shape A: the container started without `CLOUVE_OPS_PASSWORD`, so its start script logged `[clouve-ops-sshd] ✗ CLOUVE_OPS_PASSWORD is unset — sshd will not start` to the container log, which you can't read from here. Tell the user, and use the TCP/HTTP path. |
 | `Permission denied` | Shape A: the password this container has differs from the one the sibling applied with `chpasswd` at its start, or the sibling hasn't applied it yet. Retry once after a few seconds; if it persists, tell the user. Shape B: there is no `clouve-ops` account. |
-| `Host key verification failed` | The command lacks `-o StrictHostKeyChecking=accept-new`: pass it. If ssh also warns that the remote host identification has changed, the key saved in `~/.ssh/known_hosts` came from an earlier image (a rebuilt image has new keys). Tell the user, then add `-o UserKnownHostsFile=/dev/null` next to `accept-new`: ssh takes the key the container shows and saves none, as newer agents' own settings do for the app's containers. Leave `~/.ssh/known_hosts` as it is. |
+| `Host key verification failed`, or sshpass exits 6 with nothing printed | The command lacks `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, and the agent has no SSH settings for this container: add both options. Leave `~/.ssh/known_hosts` as it is. |
 | `Connection timed out` or `Could not resolve hostname` | Wrong host name, or the container is down. Rediscover the names with the commands under Channel 1 above, and check that the site and database still answer over HTTP and TCP. |
 
 ## When each channel is the right tool

@@ -13,7 +13,7 @@ Everything branches on this. Confirm which shape you are on and whether a shell 
 ```bash
 compgen -e | grep -iE 'wordpress|mysql|maria|host'                       # names only: the sibling host and DB variables
 clv-secret --list | grep -iE 'wordpress|mysql|maria|host'                # the passwords' names
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
   clouve-ops@"${WORDPRESS_HOST}" true && echo "shell: yes" || echo "shell: no"
 ```
 
@@ -83,7 +83,7 @@ Debug output on a public page leaks paths, queries, and sometimes secrets.
 
 `define( 'DISALLOW_FILE_EDIT', true );` in `wp-config.php` removes the Theme/Plugin File Editors, closing a straight admin-cookie → RCE path.
 
-- **With a shell** (Shape A): `sudo -u www-data wp --path=/var/www/html config set DISALLOW_FILE_EDIT true --raw` over SSH (wp-config edit gate applies: print the exact command, get user ack first — SKILL.md safety gates). Running it as `www-data` keeps the file's owner; if you ever had to use `--allow-root`, re-chown anything it touched (only `uploads/` is auto-chowned).
+- **With a shell** (Shape A): `wp.sh config set DISALLOW_FILE_EDIT true --raw` ([wp.sh](../scripts/wp.sh); wp-config edit gate applies: print the exact command, get user ack first — SKILL.md safety gates). Running it as `www-data` keeps the file's owner; if you ever had to use `--allow-root`, re-chown anything it touched (only `uploads/` is auto-chowned).
 - **Without a shell** (Shape B, or a failed probe): no live path — recommend the constant (next image build / file manager) or a hardening plugin that offers the toggle. There is no reliable HTTP signal for its current state, so treat this as recommend-and-verify. See [../reference/security.md → `DISALLOW_FILE_EDIT`](../reference/security.md).
 
 ## 7. Block PHP execution under `uploads/` — recommend-and-route (server config)
@@ -111,7 +111,7 @@ Confirm the homepage and login load, and that `wp-config.php` is not being serve
 
 ## 10. Salts (optional, for a site that existed before you locked it down) — recommend-and-route
 
-If this "fresh" install was actually up and possibly probed before hardening, recommend rotating the secret keys/salts so any cookie an attacker may hold is invalidated. This is a `wp-config.php` edit (`wp config shuffle-salts` with a shell; otherwise route) and it **logs every user out** — coordinate, don't surprise them. See [../reference/security.md → Secret keys and salts](../reference/security.md).
+If this "fresh" install was actually up and possibly probed before hardening, recommend rotating the secret keys/salts so any cookie an attacker may hold is invalidated. This is a `wp-config.php` edit (`wp.sh config shuffle-salts` with a shell; otherwise route) and it **logs every user out** — coordinate, don't surprise them. See [../reference/security.md → Secret keys and salts](../reference/security.md).
 
 ## Tell the user
 

@@ -41,7 +41,7 @@ WHERE autoload NOT IN ('no','off','auto-off')
 ORDER BY bytes DESC LIMIT 20;
 ```
 
-Report findings; fixing them (deactivating the offending plugin, `wp option update … --autoload=off`) goes through wp-admin or a shell — flipping `autoload` by SQL is technically possible but do it only for rows you can attribute, with the gate.
+Report findings; fixing them (deactivating the offending plugin, `wp.sh option update … --autoload=off`) goes through wp-admin or the shell — flipping `autoload` by SQL is technically possible but do it only for rows you can attribute, with the gate.
 
 ### Transients
 
@@ -81,7 +81,7 @@ The URL is now 30 bytes but the prefix still says `s:29:` — `unserialize()` re
 Rules ([SKILL.md](../SKILL.md) principle 6):
 
 - A value starting `a:`, `s:`, `O:`, `i:`, or `b:` followed by a number/colon is serialized — **never** string-`REPLACE` across it.
-- Length-aware search-replace is `wp search-replace --dry-run` — **[shell-only — probe first]**, over the shell on Shape A ([playbooks/change-site-url.md](../playbooks/change-site-url.md) has the full command). Without a shell there is no safe bulk rewrite of serialized data over TCP; say so and scope the work to plain scalar rows, or route.
+- Length-aware search-replace is `wp.sh search-replace … --dry-run` — **[shell-only — probe first]**, over the shell on Shape A ([playbooks/change-site-url.md](../playbooks/change-site-url.md) has the full command). Without a shell there is no safe bulk rewrite of serialized data over TCP; say so and scope the work to plain scalar rows, or route.
 - The one safe serialized *write* is a **known constant**: `a:0:{}` (the empty array) into `active_plugins` for WSOD isolation — after `SELECT`ing and saving the current value so it can be restored (gated).
 
 ## NEVER touch (no direct `UPDATE` / `DELETE` / `INSERT`)
@@ -125,7 +125,7 @@ SELECT ID, user_login, user_email FROM wp_users WHERE user_login = 'the_admin';
 - The value sits as weak MD5 until the next login. The script's sign-in check logs in once, which upgrades it straight away; if that check doesn't confirm it, have the user log in promptly and change the password in their profile.
 - Existing login cookies for that user die with the change, since auth cookies embed a fragment of the stored hash (general WP knowledge). That is usually a feature when you're resetting a possibly-compromised account.
 - On Shape A the platform-injected `WORDPRESS_ADMIN_PASSWORD` env will **not** reflect this change. Tell the user (see [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md)).
-- With a shell instead (Shape A): **[shell-only — probe first]** the same script without `--via-db` runs `wp user update` with the password on its standard input, as [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md) Step 2 shows. Same gate.
+- With a shell instead (Shape A): **[shell-only — probe first]** the same script without `--via-db` changes the password with wp-cli, which gets it on its standard input, as [playbooks/rotate-admin-credentials.md](../playbooks/rotate-admin-credentials.md) Step 2 shows. Same gate.
 
 ## Quick diagnostic reads
 

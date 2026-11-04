@@ -77,16 +77,14 @@ Also confirm, over the user's browser or HTTP, that the plugin's own settings pa
 Only if the `clouve-ops` probe succeeds:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-  -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
-  "sudo -u www-data wp --path=/var/www/html plugin install '<slug>' --activate"
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh plugin install '<slug>' --activate
 ```
 
-**Ownership (Shape A).** Run as `www-data`, as above, the new plugin files belong to the web server's user, so later updates from `/wp-admin` keep working. Check it: `sudo ls -ld /var/www/html/wp-content/plugins/<slug>` over the same SSH should show `www-data`. If you had to use `--allow-root` instead, the files are root's, and the entrypoint only re-chowns `wp-content/uploads/` on boot — so those root-owned files persist and will later block updates of that plugin. Re-chown them:
+**Ownership (Shape A).** Run as `www-data`, as above, the new plugin files belong to the web server's user, so later updates from `/wp-admin` keep working. Check it over the shell: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${WORDPRESS_HOST}" "sudo ls -ld /var/www/html/wp-content/plugins/<slug>"` should show `www-data`. If you had to use `--allow-root` instead, the files are root's, and the entrypoint only re-chowns `wp-content/uploads/` on boot — so those root-owned files persist and will later block updates of that plugin. Re-chown them:
 
 ```bash
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-  -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
+  -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${WORDPRESS_HOST}" \
   "sudo chown -R www-data:www-data /var/www/html/wp-content/plugins/<slug>"
 ```
 
@@ -96,7 +94,7 @@ Then run the same **A3** verification (active_plugins + site 200).
 
 Activation broke the site, or the plugin isn't wanted:
 
-- **Preferred — `/wp-admin` (Path A) or `sudo -u www-data wp --path=/var/www/html plugin deactivate <slug> --skip-plugins=<slug>` over SSH (Path B):** deactivates just that plugin, cleanly. `--skip-plugins=<slug>` keeps wp-cli from loading the plugin first, so one that fatals on load can't kill the command.
+- **Preferred — `/wp-admin` (Path A) or `wp.sh plugin deactivate <slug> --skip-plugins=<slug>` over the shell (Path B; [wp.sh](../scripts/wp.sh)):** deactivates just that plugin, cleanly. `--skip-plugins=<slug>` keeps wp-cli from loading the plugin first, so one that fatals on load can't kill the command.
 - **[TCP-mysql] fallback — deactivate *all* plugins only.** You can safely blank `active_plugins` to the empty-array constant `a:0:{}`, but you must **not** hand-edit the serialized array to remove a single entry — a byte-count mismatch silently corrupts it (SKILL.md principle 6). Deactivating everything is the WSOD-isolation move and it has its own gate (**record the current `active_plugins` first + ack** — you captured it in A1). The full procedure, including restoring the saved value, lives in [diagnose-500.md](diagnose-500.md); use it rather than free-handing the SQL here.
 
 After any rollback, re-verify the site returns 200 and tell the user exactly what state the plugin set is in now.

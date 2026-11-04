@@ -24,7 +24,7 @@ They differ only in subdirectory installs ("WordPress in its own directory"). Ne
 
 Both rows are plain scalar strings (never serialized), which is why they are one of the few URL locations that is safe to edit over raw SQL — see [../playbooks/change-site-url.md](../playbooks/change-site-url.md) for the gated procedure.
 
-`WP_HOME` / `WP_SITEURL` constants in `wp-config.php` override the DB rows entirely (the DB values become dead). Neither shape sets them by default, and checking for them requires a file channel — see [configuration.md](configuration.md) and [shell-access.md](shell-access.md). If the DB values look right but behavior disagrees, check for hardcoded constants over the shell on Shape A (`sudo -u www-data wp --path=/var/www/html config has WP_HOME` exits 0 when the constant is defined, and prints nothing). Without a shell they are a hypothesis you cannot confirm from the agent — say so rather than guessing.
+`WP_HOME` / `WP_SITEURL` constants in `wp-config.php` override the DB rows entirely (the DB values become dead). Neither shape sets them by default, and checking for them requires a file channel — see [configuration.md](configuration.md) and [shell-access.md](shell-access.md). If the DB values look right but behavior disagrees, check for hardcoded constants over the shell on Shape A (`wp.sh config has WP_HOME` exits 0 when the constant is defined, and prints nothing; [wp.sh](../scripts/wp.sh)). Without a shell they are a hypothesis you cannot confirm from the agent — say so rather than guessing.
 
 ## Shape A — the env reconciler
 
@@ -74,8 +74,7 @@ The only safe scalar exceptions are (a) `siteurl`/`home` themselves, and (b) wri
 **[shell-only — probe first]** wp-cli's `search-replace` unserializes each value, replaces inside the data structure, and reserializes with correct lengths:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
-  "sudo -u www-data wp --path=/var/www/html search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run"
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run
 # review with the user (safety gate), then re-run without --dry-run
 ```
 

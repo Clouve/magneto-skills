@@ -106,7 +106,7 @@ define( 'DISALLOW_FILE_EDIT', true );
 
 This removes those editors entirely. It lives in `wp-config.php`, so it needs a file channel:
 
-- **With a shell** (Shape A): `sudo -u www-data wp --path=/var/www/html config set DISALLOW_FILE_EDIT true --raw` over SSH, under the wp-config gate. Run as `www-data`, it leaves no root-owned files behind.
+- **With a shell** (Shape A): `wp.sh config set DISALLOW_FILE_EDIT true --raw` ([wp.sh](../scripts/wp.sh)), under the wp-config gate. It runs as `www-data`, so it leaves no root-owned files behind.
 - **Without a shell** (Shape B, or a failed probe): there is no live path from the agent — it cannot be set over the DB or HTTP. Recommend it and route: either the user adds the line via a file manager / next image build, or they use a hardening plugin that offers the same toggle.
 
 There is no clean HTTP signal for whether it is set (the editor menu only shows to an authenticated admin), so treat this as a recommend-and-verify item, not a detect-and-confirm one.
@@ -125,7 +125,7 @@ The eight `AUTH_KEY` / `SECURE_AUTH_KEY` / `LOGGED_IN_KEY` / `NONCE_KEY` and mat
 - All in-flight nonces are invalidated → open forms / AJAX fail until the page is reloaded.
 - Stored passwords are **not** affected (they are hashed separately in `wp_users.user_pass`).
 
-Rotation is a `wp-config.php` edit — there is **no** database or HTTP path for it. With the shell (Shape A), `sudo -u www-data wp --path=/var/www/html config shuffle-salts` regenerates all eight in place, under the wp-config gate. Without one (Shape B, or a failed probe), it is recommend-and-route: the user regenerates them via the [wordpress.org secret-key API](https://api.wordpress.org/secret-key/1.1/salt/) into `wp-config.php` on the next image build, or a security plugin does it. Because it force-logs-out everyone, treat it as a coordinated action, not a quiet fix — tell the user before it happens.
+Rotation is a `wp-config.php` edit — there is **no** database or HTTP path for it. With the shell (Shape A), `wp.sh config shuffle-salts` regenerates all eight in place, under the wp-config gate. Without one (Shape B, or a failed probe), it is recommend-and-route: the user regenerates them via the [wordpress.org secret-key API](https://api.wordpress.org/secret-key/1.1/salt/) into `wp-config.php` on the next image build, or a security plugin does it. Because it force-logs-out everyone, treat it as a coordinated action, not a quiet fix — tell the user before it happens.
 
 ## Update hygiene
 

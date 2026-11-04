@@ -67,7 +67,7 @@ Dropping leftovers is a schema change — the schema-change gate applies (fresh 
 | Case | Situation | Action |
 |---|---|---|
 | **A** | Code version == what the backup ran on | Nothing — proceed |
-| **B** | Code **newer** than the dump's schema | A DB update is pending (front-end still serves). If the *code* is what broke, roll the image back instead: Shape A → platform redeploys the prior app version (route the user); Shape B → developer re-pins the old tag and redeploys. Otherwise run the DB update: `/wp-admin` prompt **[HTTP — user's browser]** or `wp core update-db` **[shell-only — probe first]** |
+| **B** | Code **newer** than the dump's schema | A DB update is pending (front-end still serves). If the *code* is what broke, roll the image back instead: Shape A → platform redeploys the prior app version (route the user); Shape B → developer re-pins the old tag and redeploys. Otherwise run the DB update: `/wp-admin` prompt **[HTTP — user's browser]** or `wp.sh core update-db` **[shell-only — probe first]** |
 | **C** | Code **older** than the dump's schema | **Stop.** No supported downgrade. Get the matching (newer) image via the platform, or restore an older backup |
 
 ### 5. Files — per channel
@@ -95,7 +95,7 @@ SELECT COUNT(*) FROM wp_options WHERE option_name LIKE '\_transient\_%' OR optio
 DELETE FROM wp_options WHERE option_name LIKE '\_transient\_%' OR option_name LIKE '\_site\_transient\_%';
 ```
 
-With a shell: `sudo -u www-data wp --path=/var/www/html cache flush`, then the same with `rewrite flush --hard`. More in [reference/caching.md](../reference/caching.md).
+With a shell: `wp.sh cache flush`, then `wp.sh rewrite flush --hard` ([wp.sh](../scripts/wp.sh)). More in [reference/caching.md](../reference/caching.md).
 
 **Shape A note:** the installer entrypoint re-asserts `siteurl`/`home` from `WORDPRESS_SITE_URL` at the next container start (with a hard rewrite flush on mismatch). The user has no restart button for the app, so don't wait for that start: step 7 checks the two options now.
 

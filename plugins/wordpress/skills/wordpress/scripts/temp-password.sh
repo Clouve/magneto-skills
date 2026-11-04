@@ -11,8 +11,9 @@
 # Usage: temp-password.sh [--via-db] [--] <login>
 #        temp-password.sh --remove <file>
 #
-#   (no option)    [shell-only] wp-cli over the clouve-ops SSH channel:
-#                  sudo -u www-data wp --path=/var/www/html user update <ID> --prompt=user_pass
+#   (no option)    [shell-only] wp-cli over the clouve-ops SSH channel, as www-data, with
+#                  WordPress's own database settings (lib/wp-remote.sh):
+#                  wp --path=/var/www/html user update <ID> --prompt=user_pass
 #                  with the password on wp's stdin. wp-cli reads a prompted value with PHP's
 #                  readline(), which echoes it to stdout, so wp's stdout goes to /dev/null in
 #                  the WordPress container and the echo never comes back over SSH.
@@ -46,15 +47,19 @@
 # 2 as well.
 #
 # The sign-in check posts the login and the password (on curl's stdin, URL-encoded by curl) to
-# http://WORDPRESS_HOST/wp-login.php with WordPress's test cookie. WordPress's answer headers go
-# to a file in the temporary folder, deleted straight after, and are never printed: they hold a
-# live session. The check counts as accepted only when WordPress answers 302, sets its
-# wordpress_logged_in_ cookie and redirects to wp-admin, or first to the admin email check it
-# shows an administrator every six months. A 302 alone proves nothing: with FORCE_SSL_ADMIN on,
-# or a plugin that hides wp-login.php, WordPress redirects before it checks the password. Any
-# other answer reads "Couldn't confirm the sign-in", and the admin tries the password in a
-# private browser window, since WordPress can also turn down a request made straight to its
-# container for its host name or its cookie.
+# the site's own sign-in page, WORDPRESS_SITE_URL/wp-login.php, with WordPress's test cookie.
+# It goes there, and not to the container, because WordPress forces SSL for wp-login.php when
+# the site's address is https: a plain-HTTP request to the container gets a redirect before the
+# password is checked. When WORDPRESS_SITE_URL isn't https (or isn't set), the check posts to
+# http://WORDPRESS_HOST/wp-login.php instead, so a password sent in clear never leaves the
+# cluster. WordPress's answer headers go to a file in the temporary folder, deleted straight
+# after, and are never printed: they hold a live session. The check counts as accepted only when
+# WordPress answers 302, sets its wordpress_logged_in_ cookie and redirects to wp-admin, or first
+# to the admin email check it shows an administrator every six months. A 302 alone proves
+# nothing: with FORCE_SSL_ADMIN on, or a plugin that hides wp-login.php, WordPress redirects
+# before it checks the password. Any other answer reads "Couldn't confirm the sign-in", and the
+# admin tries the password in a private browser window, since WordPress, or a security plugin
+# in front of it, can also turn down a sign-in that a script makes.
 #
 # Output: one line on stdout that names the file and says what the sign-in check found. The
 # password and the full path are never printed. What wp-cli or mysql says on a failure goes to
@@ -69,7 +74,8 @@
 #   WORDPRESS_DB_NAME       default wordpress
 #   WORDPRESS_TABLE_PREFIX  default wp_
 #   WORDPRESS_HOST          the WordPress sibling (default wordpress)
-#   WORDPRESS_SITE_URL      optional: the sign-in page written into the file
+#   WORDPRESS_SITE_URL      optional: the site's own address, for the sign-in page written into
+#                           the file and, when it is https, for the sign-in check
 #   CLOUVE_OPS_PASSWORD     the clouve-ops password, for the shell (never printed)
 #   HOME                    where ~/wordpress-passwords lives
 #
@@ -376,25 +382,46 @@ finish() {
         exit 2
     fi
 
+    # The site's own address when it is https (WordPress forces SSL for wp-login.php then, so a
+    # plain-HTTP request to the container is redirected before the password is checked); the
+    # container's own address otherwise, so a password sent in clear stays inside the cluster.
+    # -q comes first so that no ~/.curlrc changes the request. The post to the container goes
+    # through no proxy.
+    sign_in_url="http://${WORDPRESS_HOST}/wp-login.php"
+    curl_opts=(-q -s --noproxy '*')
+    case "${WORDPRESS_SITE_URL:-}" in
+        https://?*)
+            sign_in_url="${WORDPRESS_SITE_URL%/}/wp-login.php"
+            curl_opts=(-q -s)
+            ;;
+    esac
     if ! command -v curl > /dev/null 2>&1; then
         result="Couldn't confirm the sign-in: curl isn't installed here. Have the admin try the password in a private browser window"
     else
         headers="${tmp}/sign-in-headers"
-        code="$(printf '%s' "${pw}" | curl -s -o /dev/null -D "${headers}" -w '%{http_code}' --max-time 15 \
+        code="$(printf '%s' "${pw}" | curl "${curl_opts[@]}" -o /dev/null -D "${headers}" -w '%{http_code}' --max-time 15 \
             -b 'wordpress_test_cookie=WP Cookie check' \
             --data-urlencode "log=${login}" \
             --data-urlencode 'pwd@-' \
             --data-urlencode 'wp-submit=Log In' \
             --data-urlencode 'testcookie=1' \
-            "http://${WORDPRESS_HOST}/wp-login.php" 2> /dev/null)" || true
+            "${sign_in_url}" 2> /dev/null)"
+        curl_rc=$?
         if [ "${code}" = 302 ] && signed_in "${headers}"; then
             result="WordPress accepted it at sign-in"
         elif [ "${code}" = 302 ]; then
             result="Couldn't confirm the sign-in: WordPress answered with a redirect, but not with a signed-in session in wp-admin. With FORCE_SSL_ADMIN on, or a plugin that hides wp-login.php, WordPress redirects before it checks the password. Have the admin try the password in a private browser window"
         elif [ -z "${code}" ] || [ "${code}" = 000 ]; then
-            result="Couldn't confirm the sign-in: there was no answer from WordPress at http://${WORDPRESS_HOST}/wp-login.php. Have the admin try the password in a private browser window"
+            case "${curl_rc}" in
+                6) why="the address doesn't resolve from here" ;;
+                7) why="the connection was refused" ;;
+                28) why="it didn't answer within 15 seconds" ;;
+                35 | 51 | 58 | 60) why="its TLS certificate couldn't be checked" ;;
+                *) why="curl exit ${curl_rc}" ;;
+            esac
+            result="Couldn't confirm the sign-in: there was no answer from WordPress at ${sign_in_url} (${why}). Have the admin try the password in a private browser window"
         else
-            result="Couldn't confirm the sign-in: the check got HTTP ${code}, which doesn't settle it, since WordPress can turn down a request made straight to its container. Have the admin try the password in a private browser window"
+            result="Couldn't confirm the sign-in: the check got HTTP ${code}, which doesn't settle it, since WordPress or a security plugin can turn down a sign-in that a script makes. Have the admin try the password in a private browser window"
         fi
         rm -f -- "${headers}"
     fi
@@ -425,12 +452,17 @@ fi
 { command -v sshpass > /dev/null 2>&1 && command -v ssh > /dev/null 2>&1; } \
     || die 1 "sshpass or ssh is not installed (the wordpress plugin's install.sh adds them). Nothing was changed."
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || die 1 "could not find the script's own folder. Nothing was changed."
+# shellcheck source=lib/wp-remote.sh
+. "${script_dir}/lib/wp-remote.sh" || die 1 "could not load lib/wp-remote.sh next to temp-password.sh. Nothing was changed."
+# wp runs with WordPress's own database settings (lib/wp-remote.sh), and its stdout goes to
+# /dev/null in the WordPress container, since wp-cli echoes the value it reads for --prompt.
+remote="$(wp_remote_command user update "${id}" --prompt=user_pass) > /dev/null"
+
 write_password_file
-# wp-cli echoes the value it reads for --prompt to stdout, so wp's stdout goes to /dev/null in the
-# WordPress container. The two -o options take the host key the container shows and keep none.
+# The two -o options take the host key the container shows and keep none.
 output="$(printf '%s\n' "${pw}" | SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
     -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
-    "clouve-ops@${WORDPRESS_HOST}" \
-    "sudo -u www-data wp --path=/var/www/html user update ${id} --prompt=user_pass > /dev/null" 2>&1)"
+    "clouve-ops@${WORDPRESS_HOST}" "${remote}" 2>&1)"
 rc=$?
 finish wp-cli "${rc}" "${output}"
