@@ -67,7 +67,7 @@ Separate from student rollover. `modules/Timetable Admin/course_rollover.php`. T
 - **Refuse to run rollover via SQL.** No exceptions. It must go through the UI.
 - **Offer to run the pre-flight checks for the user** — `max_input_vars`, next school year existence, student count, backup timestamp. Those are all safe reads.
 - **Offer to take the backup** before they click through the UI.
-- **Help them set `max_input_vars`** by showing how to set it in `.htaccess` (`php_value max_input_vars 20000`), NOT by shelling into the container to edit `php.ini` (we can't from Magneto Agent, and it'd get clobbered on rebuild anyway).
+- **Raise `max_input_vars` when needed** in `/var/www/html/.htaccess` (`php_value max_input_vars 20000`), over the `clouve-ops` channel after showing the diff and getting the user's ack. Not in `php.ini`: that file is part of the image, so the next image replaces it. A Gibbon version upgrade copies the package's `.htaccess` back too (the image's `upgrade.sh`), so check the value again after one.
 - **Stay with them during the run** — ask them to tell you when Step 2 is submitted and Step 3 completed, and run verification queries in between.
 - **Run the post-check** — `SELECT COUNT(*) FROM gibbonStudentEnrolment WHERE gibbonSchoolYearID=<new year ID>` and compare to the previously-active student count.
 

@@ -34,7 +34,7 @@ The image auto-syncs `config.php` from env vars on every restart. Use that.
 2. **Update the password in MySQL.** Only works if the caller has root or sufficient GRANT access:
    ```bash
    # Through Clouve ops or a user with MYSQL_ROOT_PASSWORD:
-   mysql -h "$GIBBON_DB_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e \
+   MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u root -e \
      "ALTER USER 'gibbon'@'%' IDENTIFIED BY '<new-password>'; FLUSH PRIVILEGES;"
    ```
    From Magneto Agent you usually don't have root. Escalate to Clouve ops.

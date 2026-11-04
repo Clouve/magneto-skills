@@ -14,7 +14,7 @@ Work through this before touching anything:
 |---|---|
 | Shape A, domain changed (or changing) through the platform | **Path 1** — the platform env updates the scalars; you handle content |
 | Shape A, user wants a URL *different from* `WORDPRESS_SITE_URL` by hand | **Refuse** — the entrypoint reconciler reverts both options at every restart (SKILL.md principle 4). Route the change through the platform, then Path 1 |
-| Shape B, any URL change (including lockout recovery) | **Path 2** — TCP scalar update; content pass has no shell path today |
+| Shape B, any URL change (including lockout recovery) | **Path 2** — TCP scalar update; the content pass has no wp-cli path on this shape |
 
 ## Preconditions
 
@@ -45,16 +45,15 @@ If they still show the old URL: the container hasn't restarted with the new env 
 
 The reconciler touches only the two options. Links, `<img src>` in posts, widget config, and theme mods still carry the old URL (see [reference/urls-and-migration.md](../reference/urls-and-migration.md) for where they live).
 
-**[shell-only — probe first]** The right tool is wp-cli's serialization-aware search-replace, which exists in this image — but only via a shell into the `wordpress` container, and today's WordPress images ship no sshd/`clouve-ops` account. Probe per [reference/shell-access.md](../reference/shell-access.md); expect failure. If a shell does exist:
+**[shell-only — probe first]** The right tool is wp-cli's serialization-aware search-replace, which this image ships. Run it in the `wordpress` container through [wp.sh](../scripts/wp.sh): both packaged images ship the `clouve-ops` account, so the probe in [reference/shell-access.md](../reference/shell-access.md) should pass. When it does:
 
 ```bash
-wp search-replace 'https://old.example.com' 'https://new.example.com' \
-  --path=/var/www/html --skip-columns=guid --report-changed-only --dry-run --allow-root
-# show the dry-run output to the user (safety gate), get ack, re-run without --dry-run
-wp cache flush --path=/var/www/html --allow-root
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run
+# show the dry-run output to the user (safety gate), get ack, re-run without --dry-run, then:
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh cache flush
 ```
 
-**Without a shell (the normal case today), the honest options are:**
+**Without a shell (the probe failed), the honest options are:**
 
 - **wp-admin route**: install a serialization-aware search-replace plugin (e.g. Better Search Replace) through `/wp-admin`, following the vetting and gates in [install-plugin.md](install-plugin.md). Run its dry-run first, show the tenant the match counts, execute, then delete the plugin.
 - **Defer**: leave content as-is. The site works; embedded links/media keep pointing at the old host and break if that host stops serving. Whether the old URL keeps resolving after a domain change is a platform question — assume it will not, and treat the content pass as required, just schedulable.
@@ -101,7 +100,7 @@ No rewrite flush is needed for a host/scheme change — rewrite rules are path-b
 
 ### 3. Content pass
 
-Same problem as Path 1 step 3, with one difference worth saying plainly: **the vanilla image has no wp-cli at all**, so even a future shell channel would not provide `wp search-replace` without installing it first. Today the wp-admin plugin route ([install-plugin.md](install-plugin.md), dry-run shown to the user, plugin removed after) is the *only* serialization-safe path for embedded content on this shape — or defer/route to support. Never raw SQL over serialized data.
+Same problem as Path 1 step 3, with one difference worth saying plainly: **the vanilla image has no SSH server and no wp-cli at all**, so the wp-admin plugin route ([install-plugin.md](install-plugin.md), dry-run shown to the user, plugin removed after) is the *only* serialization-safe path for embedded content on this shape — or defer/route to support. Never raw SQL over serialized data.
 
 ## Verification
 
@@ -132,7 +131,7 @@ Then have the tenant verify from outside (the agent can't see the ingress the wa
 ## Rollback
 
 - **Shape B scalars**: `UPDATE` the two rows back to the values recorded in Preconditions — same gate, print + ack. This is also the recovery move for any lockout caused by a wrong value.
-- **Shape A**: revert the domain change in the Clouve console; the next boot's reconciler puts both options back. A wrong value on this shape self-heals at pod restart by design — restart is a valid fix.
+- **Shape A**: revert the domain change in the Clouve console; the next boot's reconciler puts both options back. A wrong value on this shape also heals at the next container start, by design. The user has no restart button for the app, so don't wait for one: set both options back to `WORDPRESS_SITE_URL` now, with the same two-row update as Shape B (print + ack).
 - **Content pass gone wrong** (vanished widgets/logo, reset theme mods = serialized corruption): do **not** attempt a reverse replace — restore the DB dump from Preconditions per [rollback-from-backup.md](rollback-from-backup.md).
 
 ## What can go wrong

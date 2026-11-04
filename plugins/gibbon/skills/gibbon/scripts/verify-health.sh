@@ -8,11 +8,13 @@
 # Env vars read:
 #   GIBBON_HOST, GIBBON_DB_HOST, GIBBON_DB_USER, GIBBON_DB_PASSWORD, GIBBON_DB_NAME
 #
-# What it does NOT check (needs ops / tenant-side inspection):
+# What it does NOT check (look over the clouve-ops SSH channel, see
+# ../reference/shell-access.md):
 #   - `service cron status` inside the gibbon container
-#   - /var/log/apache2/error.log
 #   - /var/log/gibbon-cron.log
-# It prints reminders to check those manually.
+#   - ownership of /var/www/html/uploads/
+# Apache's error log is the container's own output, which nothing in the pod
+# can read. It prints reminders at the end.
 
 set -u
 
@@ -109,11 +111,12 @@ unset MYSQL_PWD
 echo
 echo "${pass} passed, ${fail} failed"
 echo
-echo "Not checked from AI Studio (requires tenant / ops inspection inside the gibbon container):"
-echo "  - 'service cron status'"
-echo "  - /var/log/apache2/error.log"
+echo "Not checked here (look in the gibbon container over the clouve-ops SSH channel,"
+echo "see reference/shell-access.md):"
+echo "  - 'sudo service cron status'"
 echo "  - /var/log/gibbon-cron.log"
 echo "  - File permissions on /var/www/html/uploads/"
+echo "Apache's error log is the container's own output; nothing in this pod can read it."
 
 if [ $fail -gt 0 ]; then
   exit 1

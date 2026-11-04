@@ -11,17 +11,18 @@
 #      manifest, so a restore can be verified against known-good values.
 #   3. [shell-only — probe first] wp-content/ + wp-config.php archive — a
 #      complete WordPress backup is the SQL dump AND wp-content/ (see
-#      ../SKILL.md, principle 1). This needs a file channel. Today's
-#      WordPress images (both shapes) ship no sshd/clouve-ops account, so
-#      the probe is EXPECTED to fail; the script says plainly what it could
-#      not cover instead of pretending.
+#      ../SKILL.md, principle 1). This needs the clouve-ops SSH channel.
+#      Both Clouve-packaged images ship it (Shape A), so the probe should
+#      pass there; a developer's own compose (Shape B) has none. When the
+#      probe fails, the script says plainly what it could not cover instead
+#      of pretending.
 #
 # See ../reference/backup-restore.md for what a complete backup is on each
 # channel, and ../playbooks/rollback-from-backup.md for the restore order.
 #
 # Shapes (see ../reference/stack-and-runtime.md):
-#   - Clouve-packaged app: MariaDB sibling (image tag floats — engine version
-#     is recorded in the manifest for exactly that reason).
+#   - Clouve-packaged app: MariaDB sibling (pinned mariadb:12.3 image; the
+#     engine version is recorded in the manifest anyway).
 #   - Developer-submitted compose: often MySQL 8. Note MYSQL_RANDOM_ROOT_-
 #     PASSWORD is common — you have the app-scoped DB user only, which is
 #     all this script needs.
@@ -202,25 +203,25 @@ log "DB dump verified: ${db_size} bytes, ${table_count} tables, completion trail
 # --- 4. [shell-only — probe first] wp-content + wp-config.php archive.
 #     wp-content holds uploads (media), plugins, themes, and debug.log; the
 #     DB references media by URL/path but the bytes live only on disk.
-#     Today's WordPress images ship no sshd and no clouve-ops account
-#     (unlike moodle/gibbon), so expect the probe to fail — this branch
-#     exists for the day a future image adds the channel.
+#     Both Clouve-packaged images ship the clouve-ops sshd, so on Shape A
+#     the probe should pass and this branch runs. A developer's own
+#     compose (Shape B) has no sshd, and the probe fails there.
 content_covered="no"
 probe_shell() {
     [[ -n "${CLOUVE_OPS_PASSWORD:-}" ]] || return 1
     command -v sshpass >/dev/null 2>&1 || return 1
     SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh \
-        -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=no \
+        -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no \
         "clouve-ops@${WORDPRESS_HOST}" true 2>/dev/null
 }
 
 if probe_shell; then
     log "Shell channel to ${WORDPRESS_HOST} exists — archiving wp-content/ + wp-config.php → ${content_file}"
     export SSHPASS="${CLOUVE_OPS_PASSWORD}"
-    ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no)
     # cache/ and upgrade/ are ephemeral (page-cache output, half-unpacked
     # updates) — excluding them keeps the archive restorable, not smaller-but-broken.
-    if ! sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${WORDPRESS_HOST}" "
+    if ! sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no \
+        "clouve-ops@${WORDPRESS_HOST}" "
         cd /var/www/html || exit 1
         if command -v sudo >/dev/null 2>&1; then
             sudo tar --exclude='wp-content/cache' --exclude='wp-content/upgrade' -czf - wp-content wp-config.php
@@ -245,7 +246,7 @@ if probe_shell; then
         printf 'content_size_bytes: %s\n' "${content_size}"
     } >> "${manifest}"
 else
-    log "No shell channel to ${WORDPRESS_HOST} (expected on today's WordPress images) — wp-content/ NOT archived"
+    log "No shell channel to ${WORDPRESS_HOST} — wp-content/ NOT archived. Normal on a developer's own compose; on the Clouve WordPress app it is a problem: see ../reference/shell-access.md (Failure modes)"
 fi
 printf 'wp_content_covered: %s\n' "${content_covered}" >> "${manifest}"
 
@@ -276,14 +277,16 @@ if [[ "${content_covered}" == "yes" ]]; then
 SUMMARY
 else
     cat <<'SUMMARY'
-  NOT COVERED (no file channel): wp-content/ — media uploads, plugin code, theme code, debug.log
-  NOT COVERED (no file channel): wp-config.php — auth salts/keys (a restore without them logs every user out)
+  NOT COVERED (the SSH probe failed): wp-content/ — media uploads, plugin code, theme code, debug.log
+  NOT COVERED (the SSH probe failed): wp-config.php — auth salts/keys (a restore without them logs every user out)
 
   This is a DB-ONLY backup. Core files are replaceable from the image, but
-  media and installed plugin/theme code are not in the database. If you need
-  the file half today: a maintained backup plugin installed via /wp-admin can
-  archive wp-content from inside the site (source-vetting gate applies — see
-  ../playbooks/install-plugin.md), or route the user to Clouve support for a
+  media and installed plugin/theme code are not in the database. On the
+  Clouve WordPress app the probe should pass: retry once sshd is up, and see
+  ../reference/shell-access.md (Failure modes). Without a shell, the file
+  half comes from a maintained backup plugin installed via /wp-admin, which
+  archives wp-content from inside the site (source-vetting gate applies —
+  see ../playbooks/install-plugin.md), or from Clouve support as a
   volume-level copy. Details: ../reference/backup-restore.md.
 SUMMARY
 fi

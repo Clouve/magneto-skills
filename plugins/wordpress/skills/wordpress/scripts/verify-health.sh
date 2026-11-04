@@ -140,9 +140,9 @@ case "${http_code}" in
         ;;
 esac
 
-# --- 2. [TCP-mysql] Connectivity + engine version. The packaged shape's
-#     MariaDB image tag floats, so the live engine version is worth printing
-#     every time rather than assuming.
+# --- 2. [TCP-mysql] Connectivity + engine version. The packaged shape pins
+#     mariadb:12.3, but a developer's compose picks its own engine, so the
+#     live engine version is worth printing every time rather than assuming.
 ping=$(mysql_q "SELECT 1" "${tmp}/db_err" || echo "")
 if [[ "${ping}" != "1" ]]; then
     detail="unreachable"

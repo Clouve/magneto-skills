@@ -8,7 +8,7 @@ Ordered by how often they actually occur. For each: symptoms, the first thing to
 
 **First check.** Did anyone restart the `gibbon` container since the version bump? `entrypoint.sh` wipes `uploads/cache/` on every start. If the container wasn't restarted, the cache is stale.
 
-**Fix.** Restart the pod (Clouve UI or `kubectl rollout restart`), or from the Gibbon UI go to **System Admin → Cache Manager → Clear Cache**.
+**Fix.** From the Gibbon UI, go to **System Admin → Cache Manager → Clear Cache**, or empty `uploads/cache/` over the `clouve-ops` channel ([operations-and-signals.md](operations-and-signals.md#clearing-the-upload-cache)). The next container start clears it too, but the user has no restart button for the app.
 
 ## 2. `max_input_vars` exhausted during rollover or mass import
 
@@ -113,4 +113,4 @@ SELECT value FROM gibbonSetting WHERE scope='System' AND name='absoluteURL';
 
 **First check.** Is `/var/www/html/` writable by `www-data`? `ls -la /var/www/html/ | head`. The image's `upgrade.sh` always does `chown www-data:www-data`, so this is usually a volume-permissions issue (the `gibbondata` volume was mounted with a mismatched UID).
 
-**Fix.** Restart the container — `entrypoint.sh` will re-chown the volume on boot. If the issue persists, escalate: the volume driver or storage class has a bad default ownership and needs Clouve ops.
+**Fix.** The next container start re-chowns the volume (`entrypoint.sh`) and runs the install again. The user has no restart button for the app, so they file a support ticket with the error. If the install fails again after that restart, the volume driver or storage class has a bad default ownership, and Clouve ops fixes it.

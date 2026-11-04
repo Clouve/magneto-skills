@@ -56,7 +56,7 @@ sudo -u www-data php admin/cli/cron.php --list
 # 3) DB dump (MariaDB / MySQL)
 MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysqldump \
     -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" \
-    --single-transaction --quick --lock-tables=false \
+    --single-transaction --quick --lock-tables=false --no-tablespaces \
     --default-character-set=utf8mb4 \
     "$MOODLE_DB_NAME" \
     > moodle-$(date +%Y%m%d-%H%M%S).sql

@@ -1,24 +1,26 @@
 # Playbook: Rotate the admin password (or any user's password)
 
-Use this when the tenant has lost or wants to rotate the WordPress admin password, or wants to force a reset for a specific account. There is a live path for this even with **no shell**: WordPress accepts a password written straight to `wp_users.user_pass` over **[TCP-mysql]** and self-upgrades the hash on next login. The `wp-cli` path is cleaner but needs a shell you probably don't have today.
+Use this when the tenant has lost or wants to rotate the WordPress admin password, or wants to force a reset for a specific account. [scripts/temp-password.sh](../scripts/temp-password.sh) makes the change. It makes a strong temporary password, saves it to a private file in the agent user's home, hands it to WordPress on stdin, checks that WordPress took it, and prints only the file's name. On Shape A it changes the password with wp-cli over the shell (Step 2). With no shell (Shape B, or a failed probe), `--via-db` writes an MD5 value to `wp_users.user_pass` over **[TCP-mysql]**, which WordPress accepts and re-hashes at the next sign-in (Step 2, fallback).
+
+The new password never goes into the chat, onto a command line or into a shell variable. A variable wouldn't last anyway, since each of your Bash calls starts a new shell. And wp-cli prints a password it reads on its standard input back to its standard output, so a `wp user update` you type yourself shows the password in the chat. Use the script.
 
 ## The gate (do not skip)
 
 This is the **"reset a user password / rotate admin credentials"** gate from [SKILL.md → Safety gates](../SKILL.md):
 
 - **Confirm the target username** and that the person asking is entitled to it.
-- **Confirm the user is contactable out-of-band** — you will hand the new password back by phone / secure message / password manager, never in chat.
-- **User ack** on the exact statement you are about to run.
-- Know that **platform-injected `WORDPRESS_ADMIN_*` env vars will NOT reflect a manual change** (see the caveat below), so this rotation is the new source of truth — the env var stays stale.
+- **Confirm the account's owner can be reached outside the chat.** The admin hands the new password over by phone, secure message or a password manager, never in chat.
+- **User ack** on the exact command you are about to run.
+- Know that **platform-injected `WORDPRESS_ADMIN_*` env vars will NOT reflect a manual change** (see the caveat below). After this rotation `wp_users` is the source of truth, and the env var stays stale.
 
 ## Preconditions
 
 - [ ] User acknowledged the rotation **logs the affected account out of every active session** (WordPress auth cookies embed a fragment of the stored password hash, so changing `user_pass` invalidates them all).
-- [ ] You have an out-of-band channel to deliver the new password. Prefer "set a temporary strong password, tell the user to change it after they log in."
+- [ ] Someone can pass the new password on outside the chat: the admin reads it from the file the script saves and gives it to the person, who changes it after signing in.
 - [ ] If rotating the primary admin: user has confirmed there is no other admin to fall back on, OR has otherwise proven identity.
 - [ ] You know the deployment shape and whether a shell exists ([../reference/shell-access.md](../reference/shell-access.md)).
 
-## Step 1 — Confirm the target user — [TCP-mysql]
+## Step 1: Confirm the target user [TCP-mysql]
 
 This doubles as the gate's identity check and as the "one row, then act" confirmation for a targeted write to a crown-jewel table.
 
@@ -32,53 +34,49 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql 
    FROM wp_users WHERE user_login = '<the-login>' OR user_email = '<the-email>';"
 ```
 
-Expect **exactly one** row. Note the `hash_prefix`: `\$P\$` is phpass, `\$2y\$` (or `\$wp\$`) is bcrypt on 6.8+ — either is a normally-hashed password. The schema does not enforce email uniqueness (duplicates can exist from imports or direct DB writes), so if two rows match on email, stop and disambiguate by `user_login`.
+Expect **exactly one** row. Note the `hash_prefix`: `\$P\$` is phpass, `\$2y\$` (or `\$wp\$`) is bcrypt on 6.8+, and either is a normally hashed password. The schema does not enforce email uniqueness (duplicates can exist from imports or direct DB writes), so if two rows match on email, stop and settle on the `user_login` with the user. The script goes by `user_login` alone and refuses a login that more than one account has.
 
-If the account authenticates via SSO / an external identity plugin, `user_pass` is not consulted at login — resetting it does nothing and the reset must happen at the identity provider. Surface that instead of writing a hash.
+If the account authenticates via SSO or an external identity plugin, `user_pass` is not consulted at login. Resetting it does nothing, and the reset has to happen at the identity provider: say so instead of running the script.
 
-## Step 2 (preferred) — `wp user update`, when you have a shell — [shell-only — probe first]
+## Step 2 (preferred): `wp user update` over the shell [shell-only — probe first]
 
-Only if the `clouve-ops` probe from [../reference/shell-access.md](../reference/shell-access.md) succeeds. **Generate** the temp password — never prompt for it (`read -rs` captures an empty string in a non-interactive shell, silently setting an empty password):
-
-```bash
-NEWPASS=$(openssl rand -hex 16)   # hex is quote-safe and stays out of shell history
-[[ -n "$NEWPASS" ]] || { echo "no password captured — aborting, nothing written"; exit 1; }
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-  -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
-  "wp --path=/var/www/html user update '<the-login>' --user_pass=\"$NEWPASS\" --allow-root"
-```
-
-Keep `NEWPASS` set — Step 3's verify probe uses it; unset it only after the out-of-band handoff (Step 4).
-
-`wp user update` writes `user_pass` (correctly hashed) and logs the change. It is a pure database operation — no `wp-content` files are touched, so the `--allow-root` ownership fallout that bites plugin installs does **not** apply here. Note the password is briefly visible in the remote process table for the duration of the call; that is unavoidable over SSH — never also put it in a file or in chat.
-
-## Step 2 (fallback) — MD5 hash straight into the DB — [TCP-mysql]
-
-This is the live path when there is no shell. WordPress recognizes a bare 32-hex-character value (no `\$P\$` / `\$2y\$` prefix) in `user_pass` as a legacy MD5 hash, accepts it at login, and **transparently re-hashes it to the site's current scheme (phpass, or bcrypt on 6.8+) on the next successful login.** It is the documented no-shell reset.
-
-**Gate reminder:** print the exact statement, get the user's ack, and confirm Step 1 returned exactly one matching row before running it. **Generate** the temp password — never prompt for it (`read -rs` captures an empty string in a non-interactive shell, and the heredoc would then silently execute `MD5('')`, locking the account out). Feed it over stdin (a heredoc), never via `-e "…MD5('…')…"`, so the plaintext stays out of the process arguments:
+Only if the `clouve-ops` probe from [../reference/shell-access.md](../reference/shell-access.md) succeeds. Show the user this command and wait for the ack:
 
 ```bash
-NEWPASS=$(openssl rand -hex 16)   # hex contains no quotes, so it is safe inside the SQL literal
-[[ -n "$NEWPASS" ]] || { echo "no password captured — aborting, nothing written"; exit 1; }
-MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
-  -u "${WORDPRESS_DB_USER}" "${WORDPRESS_DB_NAME}" <<SQL
-UPDATE wp_users SET user_pass = MD5('${NEWPASS}')
-WHERE user_login = '<the-login>';
-SQL
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/temp-password.sh -- '<the-login>'
 ```
 
-Keep `NEWPASS` set — Step 3's verify probe uses it; unset it only after the out-of-band handoff (Step 4).
+The script looks the account up by its login and changes it by its ID, as `www-data`, with `wp user update <ID>` and WordPress's own database settings, the way [wp.sh](../scripts/wp.sh) runs wp. The password goes on wp's standard input, and wp's output is thrown away inside the WordPress container. WordPress hashes the password its normal way and logs the change, and if the site can send mail it emails the account's owner that the password changed. No `wp-content` files are touched.
+
+It prints one line, for example:
+
+```
+Saved the temporary password for admin to wordpress-passwords/admin-20261102-221530.txt in the Files pane. WordPress accepted it at sign-in.
+```
+
+The file is `~/wordpress-passwords/<login>-<UTC time>.txt`, mode 600. Never open, print or copy it yourself. If the script exits 2, read its message. When nothing changed it has deleted the file again; when the password may be set it keeps the file and says so. If it says the shell or wp-cli failed and nothing changed, use the fallback below.
+
+## Step 2 (fallback): MD5 straight into the DB [TCP-mysql]
+
+This is the live path when there is no shell. WordPress recognizes a bare 32-hex-character value (no `\$P\$` / `\$2y\$` prefix) in `user_pass` as a legacy MD5 hash, accepts it at login, and **re-hashes it to the site's current scheme (phpass, or bcrypt on 6.8+) on the next successful login.** It is the documented no-shell reset. Show the user the command and wait for the ack:
+
+```bash
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/temp-password.sh --via-db -- '<the-login>'
+```
+
+The script sends `UPDATE wp_users SET user_pass = MD5('<the password>') WHERE ID = <ID>` to mysql on its standard input, so the password is in no process's arguments, and prints the same one line. Its sign-in check signs in once with the new password. When the line says WordPress accepted it, WordPress replaced the MD5 value with its normal hash at that sign-in.
 
 Notes and honest caveats:
 
-- Until the user logs in once, the stored value is an **unsalted MD5** — weaker than the site's normal hashing. It is acceptable transiently; the first login upgrades it. Have the user log in (and ideally change the password) promptly, and never reuse a temp password across accounts.
-- This does not set a "must change password" flag (WordPress core has none equivalent to Moodle's). Communicate verbally that they should change it after logging in.
-- The write invalidates the account's existing auth cookies — that account is logged out everywhere, as intended.
+- If the line says "Couldn't confirm the sign-in", the stored value may still be an **unsalted MD5** until the person's first sign-in, which is weaker than the site's normal hashing. That is acceptable for a short while. Have the user sign in and change the password promptly. The script makes a new password on every run, so no temp password is ever shared between accounts.
+- This does not set a "must change password" flag (WordPress core has nothing like Moodle's). Tell the user they should change it after signing in.
+- The write invalidates the account's existing auth cookies, so that account is logged out everywhere, as intended.
 
-## Step 3 — Verify — [TCP-mysql] + [HTTP]
+## Step 3: Verify [TCP-mysql] + [HTTP]
 
-**Confirm the write landed** (the hash prefix reflects what you wrote — 32 hex, no prefix, until first login):
+The script has already read the account back (it compares a digest of the stored hash from before and after the change) and tried the new password at `wp-login.php`. "WordPress accepted it at sign-in" means WordPress signed the account in with the new password: it set its sign-in cookie and sent the account on to wp-admin, or first to the admin email check it shows an administrator every six months. The script reads that answer without printing it, since the cookie is a live session.
+
+To see the stored value's prefix yourself:
 
 ```bash
 MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql -h "${WORDPRESS_DB_HOST}" \
@@ -86,42 +84,36 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql 
   "SELECT user_login, LEFT(user_pass,4) FROM wp_users WHERE user_login='<the-login>';"
 ```
 
-**Login probe** — prove the new password actually authenticates, without leaking it. WordPress rejects logins when the test cookie is absent, so send one:
+If the line says "Couldn't confirm the sign-in", that isn't proof of failure. The check signs in at the site's own address when `WORDPRESS_SITE_URL` is https, and at the WordPress container over plain HTTP otherwise. An HTTP `200` means the login form came back: WordPress, or a security plugin in front of it, can turn down a sign-in that a script makes. A redirect without a sign-in comes from a plugin that hides `wp-login.php` or, when the check goes to the container, from `FORCE_SSL_ADMIN`: both redirect before WordPress checks the password. When there was no answer, the line says why: the address doesn't resolve from the agent, the connection was refused, it timed out, or the certificate couldn't be checked. The line itself means the stored password changed, so have the user try the new one in a private browser window before you conclude it failed.
+
+## Step 4: Hand off outside the chat
+
+In the chat, say only where the password is: "The temporary password for <login> is in `wordpress-passwords/<file>` in the Files pane." Then the admin, not you:
+
+- passes the password on by voice, secure message or a password manager entry, never by chat or plain email;
+- tells the person to change it after they sign in;
+- tells them the account's other sessions were ended, so they'll need to sign in again.
+
+Once the admin says it's handed over, delete the file:
 
 ```bash
-[[ -n "$NEWPASS" ]] || { echo "no password captured — aborting, nothing verified"; exit 1; }
-code=$(curl -s -o /dev/null -w '%{http_code}' \
-  -b "wordpress_test_cookie=WP Cookie check" \
-  --data-urlencode "log=<the-login>" \
-  --data-urlencode "pwd=${NEWPASS}" \
-  --data-urlencode "wp-submit=Log In" \
-  --data-urlencode "testcookie=1" \
-  "http://${WORDPRESS_HOST}/wp-login.php")
-echo "login status: ${code}"   # 302 ⇒ success (redirect to wp-admin). 200 ⇒ credentials rejected / cookie issue.
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/temp-password.sh --remove '<file name>'
 ```
 
-A `302` (redirect toward `/wp-admin/`) means the credentials were accepted. A `200` means the login form re-rendered — either the password is wrong or, occasionally, the internal host rejected the cookie/Host; if the DB write clearly succeeded, have the user confirm login in a real browser before you conclude failure.
-
-## Step 4 — Hand off out-of-band
-
-Tell the user, **not in chat**:
-
-- The generated temporary password (voice / secure message / password manager entry).
-- That they should change it themselves after logging in.
-- That the account's other sessions were ended and they'll need to sign in again.
-
-Once the handoff is done, `unset NEWPASS`.
+It prints `Deleted wordpress-passwords/<file>.` and deletes only a `.txt` file inside that folder, with `shred -u` where it can.
 
 ## The `WORDPRESS_ADMIN_*` env caveat (why this rotation sticks)
 
-On the Clouve-packaged shape the installer consumes `WORDPRESS_ADMIN_USER/EMAIL/PASSWORD` **once**, at the fresh-install boot, and never re-applies them (unlike `siteurl`/`home`, which are re-asserted every boot — [../reference/architecture.md](../reference/architecture.md)). So:
+On the Clouve-packaged shape the installer consumes `WORDPRESS_ADMIN_USER/EMAIL/PASSWORD` **once**, at the fresh-install boot, and never re-applies them (unlike `siteurl`/`home`, which are re-asserted every boot; see [../reference/architecture.md](../reference/architecture.md)). So:
 
-- Your rotated password **persists** across pod restarts — the entrypoint will not overwrite it.
-- `WORDPRESS_ADMIN_PASSWORD` remains frozen at the platform's original generated value and no longer reflects reality. Never read it back to the user as "your password," and never assume it still works. `wp_users` is the source of truth.
+- Your rotated password **persists** across pod restarts. The entrypoint will not overwrite it.
+- `WORDPRESS_ADMIN_PASSWORD` stays frozen at the platform's original generated value and no longer reflects reality. Never read it back to the user as "your password," and never assume it still works. `wp_users` is the source of truth.
 
 ## What NOT to do
 
-- Don't write the new password into chat, logs, a file, or `mysql -e "…"` argv. Generate it (`openssl rand -hex 16`) and feed it via stdin/heredoc every time — never prompt with `read -rs`, which captures an empty string in a non-interactive shell.
-- Don't `UPDATE wp_users SET user_login = …` to "rename" an admin — it desynchronizes `wp_usermeta`, post and comment authorship. Create a new admin in `/wp-admin`, reassign, delete the old one.
+- Don't write the new password into chat, logs or a command line, and don't keep it in a shell variable. The script makes it, saves it to the private file and feeds it on stdin. Never prompt for it with `read -rs`, which captures an empty string in a non-interactive shell.
+- Don't type the `wp user update` command yourself: wp-cli prints the password it reads back to its output, and that output lands in the chat.
+- Don't open, `cat` or copy the password file. The admin reads it in the Files pane.
+- Don't `UPDATE wp_users SET user_login = …` to "rename" an admin. It desynchronizes `wp_usermeta` and post and comment authorship. Create a new admin in `/wp-admin`, reassign, then delete the old one.
 - Don't skip the identity confirmation because the request "sounds" legitimate. The gate is the point.
-- Don't touch any other `wp_users` column in the same statement — a password reset is a single-column, single-row write.
+- Don't touch any other `wp_users` column in the same statement. A password reset is a single-column, single-row write.

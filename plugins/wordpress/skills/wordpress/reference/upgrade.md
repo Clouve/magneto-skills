@@ -35,9 +35,8 @@ curl -sS "http://${WORDPRESS_HOST}/" | grep -io '<meta name="generator"[^>]*>'  
 ```
 
 ```bash
-# [shell-only — probe first] exact answer, when a shell exists:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
-    "wp core version --path=/var/www/html --allow-root"
+# [shell-only — probe first] exact answer, over the shell (Shape A):
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh core version
 ```
 
 There is no clean public mapping from a `db_version` number to a release; the authoritative pair is `$wp_version`/`$wp_db_version` in [wp-includes/version.php](https://github.com/WordPress/WordPress/blob/master/wp-includes/version.php) of the target release. Over TCP/HTTP alone, verify upgrades by *movement* (did `db_version` advance? does the generator show the target?) rather than by absolute numbers.
@@ -63,13 +62,13 @@ Same image-first logic, different owner: the developer controls the tag (e.g. `w
 After the code changes, reconcile the schema:
 
 - **[HTTP — the user's browser]** Always available: `/wp-admin` shows "Database Update Required"; one click runs it. Your `curl` has no admin session — route the user.
-- **[shell-only — probe first]** `wp core update-db --path=/var/www/html --allow-root` (DB-only; no file ownership side effects).
+- **[shell-only — probe first]** `wp.sh core update-db` ([wp.sh](../scripts/wp.sh)) on Shape A (DB-only; no file ownership side effects).
 - **Minor releases usually ship no schema change** — `db_version` staying put with no prompt is success, not failure.
 
 ## Plugin and theme updates
 
 - **[HTTP — the user's browser]** `/wp-admin` → Dashboard → Updates. This is the always-available path and uses WordPress's direct filesystem method — it works when `wp-content/` is writable by `www-data`.
-- **[shell-only — probe first]** `wp plugin update <slug>` / `wp theme update <slug>` / `--all`. After any `--allow-root` operation, chown what it wrote: the Clouve entrypoint re-chowns **only `wp-content/uploads`** at boot; root-owned leftovers elsewhere in `wp-content` persist and later break `/wp-admin` updates with "Could not create directory".
+- **[shell-only — probe first]** `wp plugin update <slug>` / `wp theme update <slug>` / `--all`, run on Shape A as `wp.sh plugin update <slug>` and so on ([wp.sh](../scripts/wp.sh) runs wp as `www-data`), so the files stay `www-data`'s. If you ever had to use `--allow-root`, chown what it wrote: the Clouve entrypoint re-chowns **only `wp-content/uploads`** at boot; root-owned leftovers elsewhere in `wp-content` persist and later break `/wp-admin` updates with "Could not create directory".
 - **[TCP-mysql]** — **no.** Plugins/themes are code on disk; SQL can only flip activation state, not install or update files. The install/update gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow) applies: trusted source + backup + user ack, never via SQL. Vet per [playbooks/install-plugin.md](../playbooks/install-plugin.md).
 - Per-plugin auto-updates (opt-in toggles in `/wp-admin` since WP 5.5 — standard behaviour) are the low-touch answer for security patches on sites nobody watches.
 
@@ -78,9 +77,9 @@ After the code changes, reconcile the schema:
 Every `/wp-admin` or wp-cli update drops a `.maintenance` file in the docroot for the duration; an interrupted update leaves it behind and the whole site answers **"Briefly unavailable for scheduled maintenance. Check back in a minute."** (503).
 
 - **Standard WordPress behaviour: the file auto-expires.** WordPress ignores a `.maintenance` older than 10 minutes, so the site un-bricks itself — the file stays on disk but stops mattering. If a user reports this error, the first honest answer is often "wait out the window, then verify".
-- Removing it sooner is **[shell-only — probe first]**: `rm /var/www/html/.maintenance`. On today's images there is no file channel — say so plainly and fall back to the 10-minute expiry. On Shape A a container restart does **not** clear it (the docroot sits on the persistent `wordpressdata` volume); on Shape B that depends on whether the compose declares a `/var/www/html` volume — without one, a restart wipes the docroot, `.maintenance` included (along with everything else non-core; see [stack-and-runtime.md](stack-and-runtime.md)).
+- Removing it sooner is **[shell-only — probe first]**: `sudo rm /var/www/html/.maintenance` over SSH on Shape A. Without a shell, say so plainly and fall back to the 10-minute expiry. On Shape A a container restart does **not** clear it (the docroot sits on the persistent `wordpressdata` volume); on Shape B that depends on whether the compose declares a `/var/www/html` volume — without one, a restart wipes the docroot, `.maintenance` included (along with everything else non-core; see [stack-and-runtime.md](stack-and-runtime.md)).
 - Still 503 after 10+ minutes → it is not (or no longer) the `.maintenance` gate; go to [playbooks/diagnose-500.md](../playbooks/diagnose-500.md).
 
 ## Rollback
 
-A failed upgrade rolls back via **restore from backup** — WordPress has no supported schema downgrade. The implication: the backup must be taken *immediately before* the upgrade, and on today's channels that backup is DB-only ([backup-restore.md](backup-restore.md) — make sure the user understood that before starting). Procedure: [playbooks/upgrade-wordpress.md](../playbooks/upgrade-wordpress.md) forward, [playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md) back.
+A failed upgrade rolls back via **restore from backup** — WordPress has no supported schema downgrade. The implication: the backup must be taken *immediately before* the upgrade, and without the shell that backup is DB-only ([backup-restore.md](backup-restore.md) — make sure the user understood its scope before starting). Procedure: [playbooks/upgrade-wordpress.md](../playbooks/upgrade-wordpress.md) forward, [playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md) back.

@@ -24,7 +24,7 @@ They differ only in subdirectory installs ("WordPress in its own directory"). Ne
 
 Both rows are plain scalar strings (never serialized), which is why they are one of the few URL locations that is safe to edit over raw SQL — see [../playbooks/change-site-url.md](../playbooks/change-site-url.md) for the gated procedure.
 
-`WP_HOME` / `WP_SITEURL` constants in `wp-config.php` override the DB rows entirely (the DB values become dead). Neither shape sets them by default, and checking for them requires a file channel — see [configuration.md](configuration.md) and [shell-access.md](shell-access.md). If the DB values look right but behavior disagrees, hardcoded constants are a hypothesis you currently cannot confirm from the agent — say so rather than guessing.
+`WP_HOME` / `WP_SITEURL` constants in `wp-config.php` override the DB rows entirely (the DB values become dead). Neither shape sets them by default, and checking for them requires a file channel — see [configuration.md](configuration.md) and [shell-access.md](shell-access.md). If the DB values look right but behavior disagrees, check for hardcoded constants over the shell on Shape A (`wp.sh config has WP_HOME` exits 0 when the constant is defined, and prints nothing; [wp.sh](../scripts/wp.sh)). Without a shell they are a hypothesis you cannot confirm from the agent — say so rather than guessing.
 
 ## Shape A — the env reconciler
 
@@ -33,7 +33,7 @@ The Clouve-packaged installer entrypoint ([entrypoint.sh](https://github.com/Clo
 Operational consequences:
 
 - **The env var is authoritative.** A hand edit to `siteurl`/`home` — via SQL, via Settings → General, via anything — silently reverts at the next pod restart. Never fight the reconciler; domain changes go through the platform (SKILL.md principle 4).
-- **It is also a safety net.** A botched URL edit on Shape A self-heals: restart the pod and the entrypoint puts both options back to the deployment URL. Lockouts here are temporary by construction.
+- **It is also a safety net.** A botched URL edit on Shape A heals at the next container start, when the entrypoint puts both options back to the deployment URL. The user has no restart button for the app, so to fix it sooner, set both options back to `WORDPRESS_SITE_URL` yourself (two single-row updates, print + ack). Lockouts here are temporary by construction.
 - **Only those two options.** The reconciler touches nothing else — every embedded URL in content (next section) still points wherever it pointed before. A platform domain change without a follow-up content pass leaves a mixed-host site.
 
 ## Shape B — nothing reconciles
@@ -74,14 +74,13 @@ The only safe scalar exceptions are (a) `siteurl`/`home` themselves, and (b) wri
 **[shell-only — probe first]** wp-cli's `search-replace` unserializes each value, replaces inside the data structure, and reserializes with correct lengths:
 
 ```bash
-wp search-replace 'https://old.example.com' 'https://new.example.com' \
-  --path=/var/www/html --skip-columns=guid --report-changed-only --dry-run --allow-root
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh search-replace 'https://old.example.com' 'https://new.example.com' --skip-columns=guid --report-changed-only --dry-run
 # review with the user (safety gate), then re-run without --dry-run
 ```
 
-wp-cli exists only inside the Shape A `wordpress` container, so this needs a shell channel — which today's WordPress images do not provide (no sshd, no `clouve-ops` account; probe per [shell-access.md](shell-access.md), expect failure). On Shape B the image never ships wp-cli at all, so even a future shell would not help without installing it.
+wp-cli exists only inside the Shape A `wordpress` container, so this runs over the shell channel, which both packaged images ship (probe per [shell-access.md](shell-access.md)). On Shape B the image has no SSH server and no wp-cli at all.
 
-### Live alternatives today (no shell)
+### Alternatives without a shell (Shape B, or a failed probe)
 
 1. **wp-admin route**: a serialization-aware search-replace plugin (e.g. Better Search Replace — widely used, has a dry-run mode) installed and driven through `/wp-admin`, then removed. Follow the vetting and gates in [../playbooks/install-plugin.md](../playbooks/install-plugin.md); show the user the dry-run count before the real run.
 2. **Defer the content pass**: change only the scalars and accept a mixed-host site for now — pages render, but embedded media/links keep pointing at the old host and break if/when it stops serving. State this trade-off explicitly.
@@ -93,7 +92,7 @@ On Clouve, TLS terminates at the platform ingress; the WordPress container speak
 
 The loop: `siteurl`/`home` are `https://…`, a request arrives, WordPress sees plain HTTP, issues a canonical 301 to the `https://` URL, the ingress delivers the "new" request over plain HTTP again — `ERR_TOO_MANY_REDIRECTS`.
 
-The official `wordpress` Docker image's generated `wp-config.php` has shipped an `X-Forwarded-Proto` shim for some time (sets `$_SERVER['HTTPS'] = 'on'` when the header says https), and both shapes derive their `wp-config.php` from that generator — so the shim is *probably* present, but confirming it in the file needs a channel you likely don't have. Test behavior instead:
+The official `wordpress` Docker image's generated `wp-config.php` has shipped an `X-Forwarded-Proto` shim for some time (sets `$_SERVER['HTTPS'] = 'on'` when the header says https), and both shapes derive their `wp-config.php` from that generator — so the shim is *probably* present. Confirming it in the file needs the shell (Shape A), and the behaviour test below works on either shape, so test behavior instead:
 
 **[HTTP]** differential probe from the agent (set `WORDPRESS_HOST` to the WordPress sibling's hostname, which you discover via `compgen -e | grep -iE 'wordpress|mysql|maria|host'`; the passwords' names are in `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`):
 

@@ -23,6 +23,8 @@ Everything in this `reference/` folder is research — the operational rules the
 | [shell-access.md](shell-access.md) | SSH into the `gibbon` and `gibbon-mysql` side containers via the `clouve-ops` operator account using `CLOUVE_OPS_PASSWORD` |
 | [troubleshooting.md](troubleshooting.md) | Failure modes seen in the wild (charset/collation mismatch, max_input_vars, config.php sed breakage, stale upload cache) and first-checks for each |
 
+Procedures live in [../playbooks/](../playbooks/). Adding a person, for one, goes through Gibbon's own form ([../playbooks/add-a-user.md](../playbooks/add-a-user.md)), not an insert built from [data-model.md](data-model.md).
+
 ## Versioning
 
 This reference targets Gibbon **v30.0.01** (the version shipped by the app today). Patch releases within v30.x may introduce minor differences but the table names, `CHANGEDB.php` format, cron CLI scripts, and rollover flow are stable. A Gibbon minor or major bump triggers a skill re-research pass — see the spec's §5 resolved-decision 6.

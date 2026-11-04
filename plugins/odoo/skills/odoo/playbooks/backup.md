@@ -14,12 +14,12 @@ A `pg_dump` alone is NOT a complete backup. Missing filestore = silently lost at
 
 ## Steps
 
-You run these commands in this container (the Magneto Agent) and reach Odoo over the clouve-ops SSH channel. Step 1 carries `-o StrictHostKeyChecking=accept-new` because it is often the first connection: while the host key is unknown, `sshpass` exits 6 without printing anything.
+You run these commands in this container (the Magneto Agent) and reach Odoo over the clouve-ops SSH channel. Each one passes `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, because the Odoo and Postgres containers make new SSH host keys each time they start (see [reference/shell-access.md](../reference/shell-access.md#clouve-ops-ssh-channel)).
 
 ### 1. Preferred: pipe the skill's `scripts/backup.sh` into the Odoo container
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
@@ -33,14 +33,14 @@ If you can't use the script, run the dump yourself. Pass the config as `ODOO_RC`
 
 ```bash
 # ZIP format (default) — includes dump.sql + filestore/ + manifest.json:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo ODOO_RC=/etc/odoo/odoo.conf odoo db dump <db> /tmp/<db>-$(date +%Y%m%d-%H%M%S).zip"
 ```
 
 A failed dump still leaves an empty file at that path. Check that the artifact is there and not zero bytes:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "ls -lh /tmp/<db>-*.zip"
 ```
 
@@ -66,15 +66,15 @@ Use only if `odoo db dump` is not available (e.g., the Odoo process cannot start
 
 **This produces an incomplete Odoo backup** — no `manifest.json`, but the filestore is included if you tar it separately. The restore path requires manual `psql` + filestore extraction (not `odoo db load`).
 
-The database's superuser role is `${ODOO_DB_USER}` (`odoo`). There is no `postgres` role, so `pg_dump` needs `-U`. This may be your first connection to the Postgres container, hence `accept-new` on that command too.
+The database's superuser role is `${ODOO_DB_USER}` (`odoo`). There is no `postgres` role, so `pg_dump` needs `-U`.
 
 ```bash
 # Step 1: dump the database (via SSH to the Postgres container):
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new clouve-ops@${ODOO_DB_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_DB_HOST} \
   "sudo -u postgres pg_dump -U ${ODOO_DB_USER} --no-owner -Fc <db> > /tmp/<db>-$(date +%Y%m%d).dump"
 
 # Step 2: tar the filestore (via SSH to the Odoo container):
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo tar -C /var/lib/odoo/filestore -czf /tmp/filestore-<db>-$(date +%Y%m%d).tar.gz <db>"
 ```
 
@@ -86,7 +86,7 @@ There is no `kubectl` in this container, and `scp` can't read `/var/lib/odoo`: t
 
 ```bash
 mkdir -p "$HOME/backups"
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${ODOO_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo cat /var/lib/odoo/backups/<db>-<timestamp>.zip" > "$HOME/backups/<db>-<timestamp>.zip"
 ```
 

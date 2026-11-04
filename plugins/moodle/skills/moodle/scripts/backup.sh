@@ -97,12 +97,16 @@ case "${MOODLE_DBTYPE}" in
     mariadb|mysqli|auroramysql)
         db_file="${out_dir}/db.sql.gz"
         log "Dumping ${MOODLE_DB_NAME}@${MOODLE_DB_HOST} (mysqldump) → ${db_file}"
+        # --no-tablespaces: otherwise MySQL 8's mysqldump asks for tablespace
+        # information, which needs the PROCESS privilege the moodle user doesn't
+        # have. Moodle creates no tablespaces, so the dump loses nothing.
         if ! MYSQL_PWD="${MOODLE_DB_PASSWORD}" mysqldump \
                 -h "${MOODLE_DB_HOST}" \
                 -u "${MOODLE_DB_USER}" \
                 --single-transaction \
                 --quick \
                 --lock-tables=false \
+                --no-tablespaces \
                 --default-character-set=utf8mb4 \
                 "${MOODLE_DB_NAME}" \
                 | gzip > "${db_file}"; then

@@ -130,7 +130,12 @@ The operator (you, when working in this repo) is expected to mirror those captur
 1. Create `plugins/<plugin-name>/.claude-plugin/plugin.json` with `name`, `version`, `description`, `author`. Keep it minimal — only add `commands`, `hooks`, `mcpServers` if the plugin actually ships them.
 2. Create `plugins/<plugin-name>/skills/<plugin-name>/SKILL.md` with frontmatter (`name` matching the plugin name, plus `description`). Add `playbooks/`, `reference/`, `scripts/` as needed.
 3. Add a corresponding entry to `.claude-plugin/marketplace.json`. Keep the `plugins[]` array sorted alphabetically by `name`.
-4. Validate (see below) before opening a PR.
+4. Add the plugin's row to the Plugins table in `README.md`: its name, category, version and a one-line description. Keep the rows sorted by name too.
+5. Validate (see below) before opening a PR.
+
+## Changing a plugin
+
+A change to a plugin updates its row in the Plugins table in `README.md` as well: the version always, and the category or description when the change touches them. The version sits in four places: `plugin.json`, the `version:` line of the plugin's `SKILL.md`, its `marketplace.json` entry and that row. Bump all four together, and add a `CHANGELOG.md` entry under "Unreleased". `tests/plugin-versions.test.sh` fails when the four versions differ, when a plugin has no row, or when a row's category isn't the catalog's or its description is empty.
 
 ## Validating
 

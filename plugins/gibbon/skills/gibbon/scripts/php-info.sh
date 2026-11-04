@@ -1,17 +1,14 @@
 #!/bin/bash
 # Gibbon DevOps Skill — php-info.sh
 #
-# Fetches PHP runtime info from the gibbon container, via HTTP, without
-# requiring a shell inside that container. Gibbon itself does not expose
-# phpinfo(), so this script writes a one-off probe page into the container's
-# web root and reads it back.
+# Prints what can be learned about the gibbon container's PHP without a
+# shell: the Gibbon version (from the DB) and the HTTP headers. It is
+# read-only and writes nothing into the container.
 #
-# WAIT — we cannot write to /var/www/html from AI Studio. So this script is
-# read-only: it probes what Gibbon itself surfaces (version.php, system
-# requirements page, etc.) and prints the subset of ini values we can
-# deduce. If you need full phpinfo(), ask the tenant to drop a phpinfo.php
-# file into uploads/ temporarily OR escalate to Clouve ops for a
-# `kubectl exec` phpinfo dump.
+# For the full PHP settings, run `php -i` in the gibbon container over the
+# clouve-ops SSH channel (../reference/shell-access.md). The CLI reads the
+# same php.ini as Apache, but not /var/www/html/.htaccess, which sets
+# max_input_vars for Apache.
 #
 # Env vars:
 #   GIBBON_HOST (default: gibbon)
@@ -28,7 +25,7 @@ echo "Gibbon container PHP probe via http://${GIBBON_HOST}"
 echo
 
 # 1. Version
-echo "--- Gibbon version (from DB; no CLI access) ---"
+echo "--- Gibbon version (from the DB) ---"
 if [ -n "${GIBBON_DB_HOST:-}" ] && [ -n "${GIBBON_DB_PASSWORD:-}" ]; then
   # TLS off, in whichever dialect the installed client speaks (lib/mysql-tls.sh).
   read -r -a no_tls <<< "$(mysql_no_tls_args mysql)"
@@ -53,11 +50,10 @@ curl -sI "http://${GIBBON_HOST}/" | grep -i "^server:" | sed 's/^/  /'
 echo
 
 # 4. Helpful reminders
-echo "--- What we cannot see from AI Studio ---"
-echo "  For full phpinfo() output, one of the following:"
-echo "    - Tenant drops /var/www/html/uploads/phpinfo.php temporarily"
-echo "      and visits it. REMIND THEM TO DELETE IT AFTER."
-echo "    - Clouve ops runs 'kubectl exec gibbon -- php -i'."
+echo "--- Not covered here ---"
+echo "  For the full PHP settings, run 'php -i' in the gibbon container over"
+echo "  the clouve-ops SSH channel (see reference/shell-access.md), e.g."
+echo "  php -i | grep -E 'max_input_vars|memory_limit|upload_max_filesize'."
 echo
 echo "  For max_input_vars, memory_limit, upload_max_filesize: see the"
 echo "  image's php.ini settings at apps/gibbon/image/Dockerfile — they are"

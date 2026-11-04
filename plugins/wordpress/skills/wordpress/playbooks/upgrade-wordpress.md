@@ -7,9 +7,9 @@ The core-upgrade safety gate applies throughout ([SKILL.md → Safety gates](../
 ## Preconditions
 
 - [ ] **Env names discovered**: `compgen -e | grep -iE 'wordpress|mysql|maria|host'`, and the passwords' names with `clv-secret --list | grep -iE 'wordpress|mysql|maria|host'`. Examples below assume the `WORDPRESS_DB_*` set, sibling host `WORDPRESS_HOST=wordpress`, and the default `wp_` prefix (confirm: `SHOW TABLES LIKE '%options';`).
-- [ ] **Channel inventory done** ([reference/shell-access.md](../reference/shell-access.md)). Probe SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — on today's WordPress images expect **failure**; plan on TCP + HTTP only.
+- [ ] **Channel inventory done** ([reference/shell-access.md](../reference/shell-access.md)). Probe SSH: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" true`. It should pass on Shape A (the failure modes are in that file); on Shape B, or after a failed probe, plan on TCP + HTTP only.
 - [ ] **Shape identified** ([reference/stack-and-runtime.md](../reference/stack-and-runtime.md)). Quick check: `WORDPRESS_SITE_URL`/`WORDPRESS_ADMIN_*` in env + MariaDB from `SELECT VERSION();` ⇒ Shape A (Clouve-packaged); vanilla env + MySQL 8 ⇒ Shape B (developer compose).
-- [ ] **Backup taken now** — and the user has explicitly acknowledged its scope: on today's channels it is **DB-only** ([reference/backup-restore.md](../reference/backup-restore.md) — what that does and does not protect). Do not proceed on a stale or unacknowledged backup.
+- [ ] **Backup taken now** — and the user has explicitly acknowledged its scope: with the shell on Shape A, [scripts/backup.sh](../scripts/backup.sh) archives `wp-content/` next to the dump; without it the backup is **DB-only** ([reference/backup-restore.md](../reference/backup-restore.md) — what that does and does not protect). Do not proceed on a stale or unacknowledged backup.
 - [ ] **Release notes read** — the target release's announcement on wordpress.org/news and its page under wordpress.org/documentation. Note new PHP/DB floors; compare against this stack ([reference/stack-and-runtime.md](../reference/stack-and-runtime.md)).
 - [ ] **Version invariant read and recorded** (step 1) — know your starting point before anything moves.
 
@@ -73,7 +73,7 @@ until curl -sfo /dev/null "http://${WORDPRESS_HOST}/"; do sleep 5; done; echo up
 Pick the first channel that exists:
 
 - **[HTTP — the user's browser, always available]** Have the user open `/wp-admin`. If a "Database Update Required" screen appears, they click **Update WordPress Database**. The front-end keeps serving meanwhile — no panic window.
-- **[shell-only — probe first]** `wp core update-db --path=/var/www/html --allow-root` (DB-only, no ownership side effects). On today's images this channel does not exist; on Shape B it never will (no wp-cli in the vanilla image).
+- **[shell-only — probe first]** `wp.sh core update-db` ([wp.sh](../scripts/wp.sh); DB-only, no ownership side effects). Shape A only: the vanilla image on Shape B has no wp-cli.
 - **Minor release?** `db_version` often doesn't change and no prompt appears — that is success, not a stuck update.
 
 ### 5. Verify — [TCP-mysql] + [HTTP]
@@ -96,11 +96,11 @@ Re-run the step 1c canary query — **no count may drop**. A drop in `wp_posts`/
 
 ### 6. If the site is stuck on "Briefly unavailable for scheduled maintenance"
 
-An interrupted update left `.maintenance` in the docroot. **Standard WordPress behaviour: it auto-expires after 10 minutes** — the honest first move on today's channels is to wait it out, then re-verify. Removing it earlier is **[shell-only — probe first]** (`rm /var/www/html/.maintenance`); with no file channel, say so plainly rather than improvising. Still 503 after the window → [diagnose-500.md](diagnose-500.md).
+An interrupted update left `.maintenance` in the docroot. **Standard WordPress behaviour: it auto-expires after 10 minutes** — the honest first move is to wait it out, then re-verify. Removing it earlier is **[shell-only — probe first]** (`sudo rm /var/www/html/.maintenance` over SSH, with the user's ack); without a shell, say so plainly rather than improvising. Still 503 after the window → [diagnose-500.md](diagnose-500.md).
 
 ### 7. Plugin and theme updates after core
 
-Core first, then extensions — route the user to `/wp-admin` → Dashboard → Updates **[HTTP — user's browser]**, or `wp plugin update` / `wp theme update` **[shell-only — probe first]**. Never by SQL (install/update gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow)). Mechanics and the root-owned-files trap: [reference/upgrade.md](../reference/upgrade.md).
+Core first, then extensions — route the user to `/wp-admin` → Dashboard → Updates **[HTTP — user's browser]**, or `wp.sh plugin update <slug>` / `wp.sh theme update <slug>` **[shell-only — probe first]** ([wp.sh](../scripts/wp.sh)). Never by SQL (install/update gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow)). Mechanics and the root-owned-files trap: [reference/upgrade.md](../reference/upgrade.md).
 
 ### 8. Tell the user
 
@@ -120,7 +120,7 @@ Core first, then extensions — route the user to `/wp-admin` → Dashboard → 
 | Generator still shows the old version | Page cache serving stale HTML, or the image never actually changed | Check `/feed/` (rarely cached), then confirm the platform update really rolled; purge caches per [reference/caching.md](../reference/caching.md) |
 | 503 maintenance page > 10 min | Not the `.maintenance` gate anymore (or repeated crash-looping updates) | [diagnose-500.md](diagnose-500.md) |
 | `db_version` *ahead* of the code | Image was rolled back without the DB | Unsupported downgrade — [rollback-from-backup.md](rollback-from-backup.md), Case C |
-| Permalinks 404 after upgrade | Stale rewrite rules | Delete the `rewrite_rules` option row (single row; regenerates) — [TCP-mysql]; or `wp rewrite flush --hard` with a shell |
+| Permalinks 404 after upgrade | Stale rewrite rules | Delete the `rewrite_rules` option row (single row; regenerates) — [TCP-mysql]; or `wp.sh rewrite flush --hard` with a shell |
 
 ## After-action
 

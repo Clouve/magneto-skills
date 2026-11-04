@@ -10,6 +10,7 @@ A complete backup for this app is **four things**. If any one is missing, the re
 4. **Custom assets** — `/var/www/html/customAssets/` if present (custom logos, theme overlays). Most tenants won't have this.
 
 Not backed up:
+- Additional modules' code under `modules/`. The core modules come back with the image, but a module the school added (`SELECT name, version FROM gibbonModule WHERE type='Additional'`) exists only on the `gibbondata` volume. A restored database still lists it, so keep each one's source (its release zip) before a risky step, or archive its folder the same way as the files below (`modules/<name>`).
 - The pristine Gibbon package (`/clouve/gibbon/gibbon-$GIBBON_VERSION/`) — rebuilt from the image layer on every container start.
 - `uploads/cache/` — wiped on every container start anyway.
 - `/var/log/gibbon-cron.log`, `/var/log/gibbon-cron.state/` — operational diagnostics, not data.
@@ -25,9 +26,9 @@ Both volumes are sized per the app's `clv-docker-compose.yml`:
 
 Backup of `gibbondata` captures items 2, 3, 4. Dump of the DB captures item 1.
 
-## Backup procedure (what `scripts/backup.sh` does)
+## Backup procedure
 
-Run from the Magneto Agent container. Writes a timestamped tarball to `$HOME/backups/`.
+Run from the Magneto Agent container. [scripts/backup.sh](../scripts/backup.sh) does step 1, the database dump, into `$HOME/backups/gibbon-<timestamp>/`. Steps 2 to 4, the files, go over the `clouve-ops` SSH channel ([shell-access.md](shell-access.md)) into the same folder.
 
 ```
 timestamp=$(date +%Y-%m-%d-%H-%M-%S)
@@ -37,37 +38,36 @@ mkdir -p "$out"
 # 1. DB dump
 MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqldump \
   -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" \
-  --single-transaction --quick --lock-tables=false \
+  --single-transaction --quick --lock-tables=false --no-tablespaces \
   --default-character-set=utf8mb3 \
   "$GIBBON_DB_NAME" > "$out/gibbon.sql"
 
-# 2/3/4. files over HTTP? No — we don't have a shell in the gibbon container from Magneto Agent.
-# Use the Gibbon admin UI's "Backup" feature (if the tenant has it enabled) OR
-# escalate to Clouve ops to snapshot the gibbondata volume.
+# 2/3/4. The files: uploads/ (without its cache), config.php and customAssets/ if present,
+# archived in the gibbon container and streamed back over the clouve-ops channel.
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'cd /var/www/html && sudo tar -czf - --exclude="uploads/cache/*" config.php uploads $(test -d customAssets && echo customAssets)' \
+  > "$out/gibbon-files.tar.gz"
+
+# Check the archive opens and holds config.php (lists names only).
+tar -tzf "$out/gibbon-files.tar.gz" config.php
 ```
 
-**The gotcha:** from the Magneto Agent container, you can dump the DB (it's a network-reachable MySQL on port 3306) but you **cannot** tar `/var/www/html` — that path is on the `gibbon` container's volume, which Magneto Agent has no filesystem view of. You have three options:
-
-1. **Ask the user / Clouve ops to snapshot the `gibbondata` volume** (the app's canonical disaster-recovery path).
-2. **Use Gibbon's admin UI "System Backup" feature** if enabled in the tenant's install — it produces a zip you can download over HTTPS.
-3. **SSH into the `gibbon` container** — requires `kubectl exec`, which is not available from Magneto Agent. **Do not fabricate** a procedure that assumes it is.
-
-Tell the user which path you took and ask them to confirm.
+**The gotcha:** the files live on the `gibbon` container's `gibbondata` volume, not in the Magneto Agent container, so they come over SSH; the database comes over TCP. A backup with only one of the two halves is incomplete: say which halves you took. The archive holds `config.php`, and with it the database password, so keep it under `$HOME/backups` and never print its contents.
 
 ## Restore procedure
 
-### DB restore (what you can do from Magneto Agent)
+### DB restore (over TCP)
 
 ```
 # 1. Confirm gibbon-mysql is reachable and the target DB is empty or you're overwriting intentionally
 MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$GIBBON_DB_HOST" -u "$GIBBON_DB_USER" \
   "$GIBBON_DB_NAME" -e "SHOW TABLES;" | wc -l
 
-# 2. Drop and recreate the DB (requires root access — usually NOT available to the gibbon user)
-# This is where it gets hard from Magneto Agent's side. In practice:
+# 2. Replace the tables. The gibbon user has every privilege on its own schema, so it can
+#    drop and recreate the tables; no MySQL root is needed.
 #   - For a partial restore (a single table), SOURCE the relevant section from the dump.
-#   - For a full restore, the tenant should redeploy the app with a fresh dbdata volume and
-#     run mysql < dump.sql as the first-boot step, OR escalate to Clouve ops.
+#   - For a full restore, drop the schema's tables, then apply the whole dump:
+#     playbooks/rollback-from-backup.md, step 4.
 
 # Partial-restore example (single table recovery — only with explicit user ack):
 # Extract just that table's CREATE+INSERTs from the dump:
@@ -77,12 +77,13 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$G
 
 ### Filesystem restore
 
-Same constraint as above: you cannot write `/var/www/html` from Magneto Agent. Escalate to Clouve ops and have them:
+Over the `clouve-ops` channel, from a backup's `gibbon-files.tar.gz`, with the user's ack. The commands are in [playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md), steps 2 and 3:
 
-1. Stop the app's `gibbon` container.
-2. Restore `gibbondata` from volume snapshot (or replay a tar into a fresh volume).
-3. Restart the `gibbon` container.
-4. On boot, `entrypoint.sh` runs `update-config.sh`, which re-syncs `$DB_{HOST,NAME,USER,PASSWORD}` into `config.php`. If your restore brought in a stale `config.php` with the wrong creds, this fixes it.
+1. Archive the current files first, the same way as the backup, so the user can have them back.
+2. Unpack the backup's archive over `/var/www/html` and give `uploads/` and `config.php` back to `www-data`. Files added since the backup stay.
+3. Nothing needs a restart. At the next container start, `entrypoint.sh` runs `update-config.sh`, which re-syncs `$DB_{HOST,NAME,USER,PASSWORD}` into `config.php`, so a restored `config.php` with stale database settings heals then. Restore only this deployment's own backups.
+
+If the whole volume is lost, look first at the deployment's **Backups** tab in the Clouve dashboard: it lists the deployment's platform backups and their schedules, and has a Restore action. If it holds no backup from before the loss, point the user to Clouve support, and restore the files from your archive once the container runs again.
 
 ## Verify a restore
 
@@ -97,12 +98,12 @@ After a restore, before you tell the user "you're good":
 
 ## How often should the tenant back up?
 
-For a live school: daily at minimum, with retention. Weekly full + daily incremental is standard. This skill does not automate scheduling — that's a Clouve-platform concern. The skill's role is to make a backup on demand before any risky operation (upgrades, module installs, rollover, `ALTER TABLE`).
+For a live school: daily at minimum, with retention. The deployment's **Backups** tab in the Clouve dashboard is where the user turns on daily, weekly, monthly or yearly backups of the whole deployment. This skill's role is to make a backup on demand before any risky operation (upgrades, module installs, rollover, `ALTER TABLE`).
 
 ## What to tell the tenant
 
 When you take a backup on their behalf, tell them:
 - Where it is (`$HOME/backups/gibbon-<timestamp>/`).
-- What's in it (DB dump only, from Magneto Agent → escalate for files, OR full via UI/ops).
+- What's in it: the database dump, and the files archive if you took one (`uploads/`, `config.php`, `customAssets/`).
 - That Magneto Agent's `/home` volume survives pod restarts, so the backup persists, but it is not off-site.
 - That for disaster recovery, they should periodically download the backup to their own laptop or cloud storage.

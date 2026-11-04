@@ -30,10 +30,9 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysql -h "$G
   JOIN gibbonPerson p ON e.gibbonPersonID = p.gibbonPersonID
   WHERE y.status='Current' AND p.status='Full';"
 
-# Current value of max_input_vars, from PHP
-curl -sf http://gibbon/installer/install.php 2>/dev/null | grep -oP 'max_input_vars[^<]*' | head -1
-# OR ask the user to run a phpinfo page (safer):
-#   <?php echo ini_get('max_input_vars'); ?>
+# Current value of max_input_vars for Apache: the .htaccess line wins over php.ini.
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+  'grep -n max_input_vars /var/www/html/.htaccess; php -r "echo ini_get(\"max_input_vars\"), PHP_EOL;"'
 ```
 
 If the student count × 3 > max_input_vars, bump `max_input_vars` before rollover:
@@ -41,8 +40,9 @@ If the student count × 3 > max_input_vars, bump `max_input_vars` before rollove
 ```
 # /var/www/html/.htaccess already has: php_value max_input_vars 8000
 # Bump to a safe ceiling. The image's default is 8000; schools with 3000+ students need more.
-# Tell the user to edit .htaccess via the File Browser or ask Clouve ops to inject a new env.
 # Per-tenant: 20000 is safe for nearly any single school.
+# Over the clouve-ops channel: show the user the one-line diff, get the ack, then edit the line with sudo.
+# A Gibbon version upgrade copies the package's .htaccess back, so check again after one.
 ```
 
 ## Capture the pre-rollover snapshot

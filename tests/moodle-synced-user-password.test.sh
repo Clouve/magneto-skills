@@ -3,7 +3,7 @@
 #
 # The External Database sync (auth_db, passtype=internal) tags every user it creates with the create_password
 # preference (public/auth/db/auth.php). Moodle's "Send new user passwords" task then replaces that user's password
-# with a random one and emails it, at the next cron run (every minute on Clouve). On the rig the assistant set
+# with a random one and emails it, at the next cron run (every five minutes on Clouve). On the rig the assistant set
 # Maya Patel's password 24 s after the sync, showed it once, and 40 s later the task replaced it: the password it
 # handed over no longer worked.
 #

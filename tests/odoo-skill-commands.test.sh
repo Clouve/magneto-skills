@@ -16,8 +16,9 @@
 #      `odoo -c ... db dump` starts the server parser ("unrecognized
 #      parameters"). ODOO_RC=/etc/odoo/odoo.conf works for every subcommand.
 #   3. Recycling the pod, or asking the customer to restart. The agent has no
-#      kubectl and the customer's dashboard has no restart button. Odoo is
-#      PID 1 in its container and re-executes itself on SIGHUP.
+#      kubectl and the customer's dashboard has no restart button. SIGHUP to
+#      PID 1 makes Odoo re-execute itself in its container (from the
+#      2026-11-02 image on, PID 1 is tini, which passes the signal on).
 #   4. `sudo odoo shell` without the config. sudo over SSH has no ODOO_RC, so
 #      Odoo looks for PostgreSQL on a local socket and fails. The same holds
 #      for every odoo command given -d: `odoo neutralize -d <db>` with no

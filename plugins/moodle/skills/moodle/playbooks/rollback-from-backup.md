@@ -37,8 +37,8 @@ out=/tmp/forensic-$ts
 mkdir -p "$out"
 
 # DB dump of the broken state
-mysqldump -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" \
-    --single-transaction --quick --lock-tables=false --default-character-set=utf8mb4 \
+MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysqldump -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" \
+    --single-transaction --quick --lock-tables=false --no-tablespaces --default-character-set=utf8mb4 \
     "$MOODLE_DB_NAME" | gzip > "$out/db-broken.sql.gz"
 
 # dataroot — DON'T tar it if it's huge; just record what's there
@@ -58,7 +58,7 @@ This depends on the engine and the dump format.
 
 ```bash
 # 4a. Drop existing tables (preserves the schema/database — Moodle owns the schema, not the DB).
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" -e "
+MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" "$MOODLE_DB_NAME" -e "
 SET FOREIGN_KEY_CHECKS = 0;
 SET @tables = NULL;
 SELECT GROUP_CONCAT('\`', table_name, '\`') INTO @tables
@@ -68,7 +68,7 @@ PREPARE s FROM @tables; EXECUTE s; DEALLOCATE PREPARE s;
 SET FOREIGN_KEY_CHECKS = 1;"
 
 # 4b. Restore from dump.
-mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" -p"${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" "$MOODLE_DB_NAME" < /path/to/backup.sql
+MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" "$MOODLE_DB_NAME" < /path/to/backup.sql
 ```
 
 Verify: `SELECT value FROM mdl_config WHERE name='version';` should match the backup's version.

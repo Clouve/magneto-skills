@@ -16,7 +16,8 @@ DB="${1:-${ODOO_DB_NAME:?set ODOO_DB_NAME or pass the db as arg 1}}"
 export SSHPASS="$CLOUVE_OPS_PASSWORD"
 
 echo "[odoo/hash-check] res.company._check_hash_integrity() on ${DB}"
-sshpass -e ssh -o StrictHostKeyChecking=accept-new "clouve-ops@${ODOO_HOST}" \
+# Save no host key: the Odoo container makes new ones each time it starts.
+sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${ODOO_HOST}" \
   "sudo odoo shell -c /etc/odoo/odoo.conf -d '${DB}' --stop-after-init" <<'PY'
 import sys
 

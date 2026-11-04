@@ -28,21 +28,29 @@ rather than typed. `sshpass` is pre-installed in this container.
 
 ```bash
 # Interactive shell, gibbon container (Apache + PHP)
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${GIBBON_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST}
 
 # Interactive shell, gibbon-mysql container (Oracle Linux 9, MySQL 8)
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${GIBBON_DB_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_DB_HOST}
 
 # Run a one-shot command (preferred for scripted operations)
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${GIBBON_HOST} \
-    "sudo tail -50 /var/log/apache2/error.log"
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+    "sudo tail -50 /var/log/gibbon-cron.log"
 ```
 
-The first ssh to each host prints a host-key fingerprint warning;
-either accept it interactively, or pass
-`-o StrictHostKeyChecking=accept-new` on the first run. Subsequent
-connections are silent — the host key is captured to
-`~/.ssh/known_hosts`.
+Pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`
+on every connection, as every command in this skill does. The two options
+take the key the container shows and save nothing. The containers' host
+keys change: the gibbon image's whenever it is rebuilt, and gibbon-mysql
+makes its own when its container starts. A key saved earlier is then wrong,
+and ssh refuses it ("REMOTE HOST IDENTIFICATION HAS CHANGED").
+
+Newer agents' own SSH settings keep no key for the app's containers either.
+Older agents have no such settings, so there a command without the options
+fails: `sshpass` can't answer the yes/no prompt for a key it doesn't know,
+and exits 6 without printing anything. With the options, an older agent's
+ssh also prints "Permanently added ... to the list of known hosts" on every
+call. That list is `/dev/null`, so nothing is kept.
 
 ## When to use SSH vs. the TCP channels
 
@@ -51,12 +59,24 @@ connections are silent — the host key is captured to
 | Run a SQL query, count rows, read `gibbonSetting` | **TCP `mysql`** from the Magneto Agent container — faster, no SSH hop |
 | `mysqldump` for backup | **TCP `mysqldump --host=${GIBBON_DB_HOST}`** — works fine over the wire |
 | Read a Gibbon page or hit an API | **TCP `curl http://${GIBBON_HOST}/...`** |
-| Tail `/var/log/apache2/error.log` | **SSH into gibbon**, then `sudo tail -f` |
+| Read `/var/log/gibbon-cron.log`, `config.php` or anything else under `/var/www/html` | **SSH into gibbon**, then `sudo tail` / `sudo grep` (never print `config.php`: it holds the database password) |
+| Apache's error log, PHP errors included | Usually not readable from here: see [The Apache error log](#the-apache-error-log) |
 | Run `php /var/www/html/cli/foo.php` (Gibbon CLI scripts) | **SSH into gibbon**, then `sudo php …` |
 | `sudo apachectl reload` | **SSH into gibbon** |
 | Inspect or edit `/etc/mysql/conf.d/*.cnf` | **SSH into gibbon-mysql**, then `sudo nano` |
 | Restart `mysqld` (rare; usually pod restart is the right move) | **SSH into gibbon-mysql**, then `sudo systemctl restart mysqld` (if systemd present) or signal the process |
 | Inspect filesystem under `/var/www/html` | **SSH into gibbon** — there is no shared filesystem mount |
+
+## The Apache error log
+
+Check what `/var/log/apache2/error.log` is before reading it:
+
+```bash
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST} \
+    "ls -l /var/log/apache2/"
+```
+
+The gibbon image is built on `php:8.3-apache`, whose `error.log` and `access.log` are links to `/dev/stderr` and `/dev/stdout`. Then Apache's and PHP's errors go to the container's own log, which nothing in this pod can read, SSH included: don't `tail` the link. Work from what you can see (the HTTP response, `gibbonLog`, `php -l` on a suspect file) and leave the container log to Clouve support. If `error.log` is a regular file on this install, `sudo tail -100` it.
 
 ## Safety gates apply across SSH
 
@@ -67,8 +87,10 @@ commands over SSH as when you're running locally. Specifically:
 - **No destructive actions inside the target containers** (`apachectl
   stop`, `mysqld kill`, `DROP`, `TRUNCATE`, `rm -rf`) without an
   explicit user ack.
-- **Edit `config.php` over SSH only after a diff + ack**; otherwise
-  prefer the env-driven sync path that runs at container restart.
+- **Edit `config.php` over SSH only after you've shown the lines you
+  change, with the database password masked, and got an ack** (never a
+  diff or a print of the file); otherwise prefer the env-driven sync path
+  that runs at container restart.
 - **Never echo, copy, or transmit `CLOUVE_OPS_PASSWORD`** — same
   rule as for the AI Assistant's access key. Use `sshpass -e` (which reads it
   from the env via `SSHPASS`) rather than passing the value on a
@@ -82,7 +104,7 @@ commands over SSH as when you're running locally. Specifically:
 | Symptom | Likely cause |
 |---|---|
 | `Permission denied` | `CLOUVE_OPS_PASSWORD` differs between this container and the target — compare a hash of each copy, never the value. Also possible: chpasswd hasn't run yet on the target side; retry after a few seconds. |
-| `Host key verification failed` | First connection — pass `-o StrictHostKeyChecking=accept-new` |
+| `Host key verification failed`, or sshpass exits 6 with nothing printed | The command lacks `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, and the agent has no SSH settings for this container: add both options |
 | `Connection refused` immediately after pod start | The target container's sshd hasn't started yet (the bring-up script applies the password, then binds the daemon) — retry after a few seconds |
 | `Connection timed out` | Pod-internal DNS hasn't caught up, or the target container crashed — check `${GIBBON_HOST}` resolves and HTTP/MySQL still works |
 | sshd never came up | `CLOUVE_OPS_PASSWORD` was unset on the target service — `start-clouve-ops-sshd.sh` exits non-zero in that case. Check the target's container logs for `[clouve-ops-sshd] ✗ CLOUVE_OPS_PASSWORD is unset`. |

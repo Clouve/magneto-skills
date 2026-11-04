@@ -1,8 +1,8 @@
 ---
 name: gibbon
-description: Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, hardening, and diagnosing 500s. Use when the user is running this app, mentions "Gibbon", or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.
+description: Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, adding people (staff, students, parents), hardening, and diagnosing 500s. Use when the user is running this app, mentions "Gibbon", wants to add a student, teacher or parent to the school, or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.
 type: devops
-version: 0.1.3
+version: 0.1.4
 authoredAgainst: gibbon v30.0.01
 ---
 
@@ -33,13 +33,14 @@ Use this skill when the user is working with the Clouve Gibbon app, when they me
 8. **Academic year is sacred.** The `gibbonSchoolYear` table drives enrolment, attendance, markbook, and finance scoping. Rollover (promoting students to next year) is a documented workflow inside Gibbon's own UI — do NOT simulate it with SQL. See [reference/academic-year-rollover.md](reference/academic-year-rollover.md) and [playbooks/year-end-rollover.md](playbooks/year-end-rollover.md).
 9. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 10. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
+11. **Add people through Gibbon's own form, not SQL.** A new `gibbonPerson` row needs about 50 columns with no default and a password hashed the way Gibbon checks it; Gibbon's form gets them right, and a hand-written insert doesn't. The admin adds the person; you check the username, the role and the result. See [playbooks/add-a-user.md](playbooks/add-a-user.md).
 
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
 - Gibbon is reachable at the pod-internal hostname `gibbon` on port 80. The Gibbon MySQL is at `gibbon-mysql:3306`. Both are rendered into env vars injected by the app — use `${GIBBON_HOST}` / `${GIBBON_DB_HOST}` rather than hard-coding names.
 - Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
-- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`; connect with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${GIBBON_HOST}` (or `@${GIBBON_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
+- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`; connect with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${GIBBON_HOST}` (or `@${GIBBON_DB_HOST}`). Every `ssh` and `scp` in this skill passes those two `-o` options, which take the key the container shows and save nothing: pass them on any command you write, since an older agent without them fails silently (sshpass exits 6). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 
 ## Pointers into the deeper docs
 
@@ -105,11 +106,13 @@ The gates are the reason this skill exists. If any of these are skipped, assume 
 |---|---|
 | Any multi-row `UPDATE`/`DELETE` | `SELECT COUNT(*)` first + user ack |
 | Schema change (`ALTER`, `CREATE`, `DROP`, `TRUNCATE`) | Full DB dump first, then user ack |
-| Edit to `config.php` | Show diff + user ack; prefer env-var-driven path |
+| Edit to `config.php` | Show the lines you change, with the database password masked (never a diff or a print of the file) + user ack; prefer env-var-driven path |
+| Restore from backup | Before anything is replaced: both halves' dates and sizes, the tables dropped and restored, and whether `config.php` differs (by `sha256sum`) ([playbooks/rollback-from-backup.md](playbooks/rollback-from-backup.md) step 2) + user ack |
 | Install an Additional module | `manifest.php` read + `type=='Additional'` verified + user ack |
 | Delete files outside `/tmp` or `/var/www/html/uploads/cache/` | User ack |
 | Upgrade Gibbon version | Backup taken first + `gibbonSetting(version)` matches `/var/www/html/version.php` + user ack |
 | Year-end rollover | Next `gibbonSchoolYear` row exists + `max_input_vars >= student count` + full backup + user ack |
+| Add a user | The admin uses Gibbon's own form ([playbooks/add-a-user.md](playbooks/add-a-user.md)); never a SQL insert, and no password in the chat |
 | Rotate DB credentials | Use container env vars, not hand-edit — restart pod to apply |
 
 "User ack" means: you print the exact command/SQL you are about to run, and wait for the user to reply affirmatively before executing. Do not infer consent from an earlier "go ahead."

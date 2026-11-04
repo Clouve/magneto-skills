@@ -12,18 +12,18 @@ Core files (`wp-admin/`, `wp-includes/`, root PHP) are **not** backup material �
 
 ## What each artifact needs, per channel
 
-| Artifact | Channel | Available today? |
+| Artifact | Channel | Available? |
 |---|---|---|
 | SQL dump | **[TCP-mysql]** `mysqldump` from the agent container | **Yes, always** |
-| `wp-content/` archive | **[shell-only — probe first]** file access inside the WordPress container | **No** — today's WordPress images ship no `clouve-ops` SSH account (see [shell-access.md](shell-access.md)) |
-| `wp-config.php` copy | **[shell-only — probe first]** | **No** — same |
+| `wp-content/` archive | **[shell-only — probe first]** file access inside the WordPress container | **Shape A: yes** — both packaged images ship the `clouve-ops` SSH account (see [shell-access.md](shell-access.md)). Shape B: no |
+| `wp-config.php` copy | **[shell-only — probe first]** | Same as the `wp-content/` archive |
 | Code inventory (plugins/theme, versions) | **[TCP-mysql]** — partial, see below | Yes |
 
 Probe before planning; never write a backup promise that silently assumes a shell.
 
-## The TCP-only reality
+## When only the database is reachable
 
-On today's images the only backup you can take yourself is the DB dump. Say this to the user in plain words before they rely on it.
+On Shape B, or when the shell probe fails, the only backup you can take yourself is the DB dump. Say this to the user in plain words before they rely on it.
 
 A **DB-only backup protects against**: bad SQL, a botched plugin's data, a failed core schema migration, accidental content/user deletion, options corruption — anything whose damage lives in the database.
 
@@ -59,32 +59,32 @@ mkdir -p "$HOME/backups"
 ts=$(date +%Y%m%d-%H%M%S)
 MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysqldump \
     -h "$WORDPRESS_DB_HOST" -u "$WORDPRESS_DB_USER" \
-    --single-transaction --quick \
+    --single-transaction --quick --no-tablespaces \
     --default-character-set=utf8mb4 \
     "$WORDPRESS_DB_NAME" | gzip > "$HOME/backups/wordpress-$ts.sql.gz"
 ```
 
-`--single-transaction` gives a consistent InnoDB snapshot without locking; `--quick` streams rows (matters for `wp_postmeta` and `wp_options` bloat). [scripts/backup.sh](../scripts/backup.sh) wraps this and records a manifest (size, table list, row counts) so a broken artifact is noticed before you need it.
+`--single-transaction` gives a consistent InnoDB snapshot without locking; `--quick` streams rows (matters for `wp_postmeta` and `wp_options` bloat); `--no-tablespaces` skips the tablespace information, which MySQL 8 dumps only with the PROCESS privilege that app users don't have. [scripts/backup.sh](../scripts/backup.sh) wraps this and records a manifest (size, table list, row counts) so a broken artifact is noticed before you need it.
 
 ### Shape B (vanilla compose, MySQL 8) caveats
 
-- If the dump fails with `Access denied; you need (at least one of) the PROCESS privilege(s)`, add `--no-tablespaces` — standard MySQL 8 behaviour with an app-scoped user, and on this shape **root does not exist for anyone** (`MYSQL_RANDOM_ROOT_PASSWORD`).
+- Without `--no-tablespaces`, MySQL 8 answers an app-scoped user's dump with `Access denied; you need (at least one of) the PROCESS privilege(s)`. Every dump in this skill passes the flag; keep it, because on this shape **root does not exist for anyone** (`MYSQL_RANDOM_ROOT_PASSWORD`).
 - The agent's client is Debian's `default-mysql-client` (a MariaDB build, installed by this plugin's `install.sh`). Against MariaDB (Shape A) it is a native match. Against MySQL 8 it generally interoperates, but the server's default `caching_sha2_password` auth is a known friction point — verify with a cheap `SELECT 1` first; if auth fails with an unknown-auth-plugin error, surface it honestly (a client that supports that plugin is the likely fix — verify in-session rather than assuming this one does).
 
 ## Archiving `wp-content/` — [shell-only — probe first]
 
-Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new clouve-ops@"${WORDPRESS_HOST}" true` — expect failure on today's images. When a shell *does* exist:
+Probe: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" true`. It should pass on Shape A ([shell-access.md](shell-access.md) has the failure modes). When it does:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" \
     "sudo tar -C /var/www/html --exclude='wp-content/cache/*' -czf - wp-content" \
     > "$HOME/backups/wp-content-$ts.tar.gz"
 # And the config copy:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"${WORDPRESS_HOST}" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"${WORDPRESS_HOST}" \
     "sudo cat /var/www/html/wp-config.php" > "$HOME/backups/wp-config-$ts.php"
 ```
 
-`wp-content/cache/` (page-cache plugins) regenerates — exclude it. Never print `wp-config.php` contents into chat; it holds credentials and salts.
+`wp-content/cache/` (page-cache plugins) regenerates — exclude it. Never print `wp-config.php` contents into chat; it holds credentials and salts. [scripts/backup.sh](../scripts/backup.sh) runs the same probe and, when it passes, archives `wp-content/` and `wp-config.php` together into one file.
 
 ## Restore
 
@@ -98,7 +98,7 @@ Order matters (files first so the DB never references code/media that isn't ther
    ```
    `mysqldump` output includes `DROP TABLE IF EXISTS` per table, so the import replaces every dumped table. Tables *created after* the backup (e.g. by a since-installed plugin) survive the import — compare `SHOW TABLES` against the manifest and drop leftovers only under the schema-change gate in [SKILL.md → Safety gates](../SKILL.md#safety-gates-enforce-these-in-every-flow).
 3. **Ownership** — `chown -R www-data:www-data wp-content` **[shell-only — probe first]**; skip when no file restore happened.
-4. **Flush caches/rewrites** — **[TCP-mysql]** delete the `rewrite_rules` option (single row; WordPress regenerates it on the next request — standard behaviour) and clear expired transients per [caching.md](caching.md). With a shell: `wp cache flush && wp rewrite flush --hard`.
+4. **Flush caches/rewrites** — **[TCP-mysql]** delete the `rewrite_rules` option (single row; WordPress regenerates it on the next request — standard behaviour) and clear expired transients per [caching.md](caching.md). With a shell: `wp.sh cache flush`, then `wp.sh rewrite flush --hard` ([wp.sh](../scripts/wp.sh)).
 
 **Shape A note:** the installer entrypoint re-asserts `siteurl`/`home` from `WORDPRESS_SITE_URL` at every boot — after a restore, a platform restart both fixes a stale restored URL and hard-flushes rewrites. On Shape B nothing reconciles URLs; check them yourself (step canaries below, and [urls-and-migration.md](urls-and-migration.md)).
 

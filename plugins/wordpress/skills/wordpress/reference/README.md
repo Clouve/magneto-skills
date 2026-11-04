@@ -4,12 +4,12 @@ Per-topic facts about WordPress as deployed on Clouve, covering **both deploymen
 
 ## How to navigate
 
-Two questions decide everything in these docs: *which shape are you on* and *which channels exist*. Answer them first — start with [stack-and-runtime.md](stack-and-runtime.md) (shape probe) and [shell-access.md](shell-access.md) (channel matrix; today's WordPress images have **no** shell channel, so wp-cli is unreachable and every doc below labels its TCP/HTTP fallback). When you arrive with a symptom rather than a task, enter through [troubleshooting.md](troubleshooting.md).
+Two questions decide everything in these docs: *which shape are you on* and *which channels exist*. Answer them first — start with [stack-and-runtime.md](stack-and-runtime.md) (shape probe) and [shell-access.md](shell-access.md) (channel matrix: on Shape A both packaged images ship the `clouve-ops` shell channel, and with it wp-cli; on Shape B there is none, and every doc below labels its TCP/HTTP fallback). When you arrive with a symptom rather than a task, enter through [troubleshooting.md](troubleshooting.md).
 
 | File | What it covers |
 |---|---|
-| [shell-access.md](shell-access.md) | The channel matrix (TCP `mysql`, HTTP `curl`, conditional `clouve-ops` SSH), the probe procedure, why today's WordPress images ship no shell, and the safety gates per channel |
-| [stack-and-runtime.md](stack-and-runtime.md) | The two shapes side by side: images, PHP limits, wp-cli availability, DB engines (MariaDB floating tag vs. MySQL 8), volumes, filesystem layout |
+| [shell-access.md](shell-access.md) | The channel matrix (TCP `mysql`, HTTP `curl`, conditional `clouve-ops` SSH), the probe procedure and its failure modes, which shape ships a shell, and the safety gates per channel |
+| [stack-and-runtime.md](stack-and-runtime.md) | The two shapes side by side: images, PHP limits, wp-cli availability, DB engines (pinned MariaDB 12.3 vs. MySQL 8), volumes, filesystem layout |
 | [architecture.md](architecture.md) | Request lifecycle, `wp-config.php` generation from `WORDPRESS_*` env, the Clouve installer entrypoint's boot sequence step by step |
 | [configuration.md](configuration.md) | Operationally-relevant `wp-config.php` constants (`WP_DEBUG*`, `DISALLOW_FILE_EDIT`, `WP_HOME`/`WP_SITEURL`, table prefix, salts) and which are env-driven on the packaged shape |
 | [install-and-bootstrap.md](install-and-bootstrap.md) | Auto-install vs. the browser installer, the hardcoded `wp_options` install probe, verifying install state from the DB |

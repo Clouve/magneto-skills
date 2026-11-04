@@ -1,6 +1,6 @@
 # Playbook: Install a plugin
 
-Use this whenever the user wants to add a WordPress plugin that is not already present. The honest headline: **installing a plugin means running the installer, and the agent has no way to run a WordPress installer without a shell — which today it does not have.** So the realistic flow is *the user installs from `/wp-admin` while you vet, guide, and verify over the channels you do have* ([TCP-mysql] + [HTTP]). The `wp-cli` path is documented for the day a shell exists.
+Use this whenever the user wants to add a WordPress plugin that is not already present. The honest headline: **installing a plugin means running the installer, and the agent can only run a WordPress installer through a shell.** On Shape A the shell gives you wp-cli, so once the source is vetted you can install it yourself (Path B). On Shape B, or when the probe fails, the realistic flow is Path A: *the user installs from `/wp-admin` while you vet, guide, and verify over the channels you do have* ([TCP-mysql] + [HTTP]).
 
 ## Read first — a plugin is arbitrary PHP
 
@@ -28,9 +28,9 @@ Before anything is installed:
 
 If vetting raises a concern, name it and ask the user to pick a different plugin.
 
-## Path A (the real one today) — user installs via `/wp-admin`, you verify
+## Path A — user installs via `/wp-admin`, you verify
 
-Use this whenever the shell probe fails (the normal case).
+Use this on Shape B, whenever the shell probe fails, or when the user would rather install it themselves.
 
 ### A1. Capture the "before" state — [TCP-mysql]
 
@@ -77,17 +77,15 @@ Also confirm, over the user's browser or HTTP, that the plugin's own settings pa
 Only if the `clouve-ops` probe succeeds:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-  -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
-  "wp --path=/var/www/html plugin install '<slug>' --activate --allow-root"
+/clouve/skills/wordpress/plugin/skills/wordpress/scripts/wp.sh plugin install '<slug>' --activate
 ```
 
-**Post-install ownership caveat (Shape A).** `--allow-root` writes the new plugin files as **root**, but the entrypoint only re-chowns `wp-content/uploads/` on boot — so these root-owned files persist and will later block `www-data`-driven updates or auto-updates of that plugin. Re-chown after installing:
+**Ownership (Shape A).** Run as `www-data`, as above, the new plugin files belong to the web server's user, so later updates from `/wp-admin` keep working. Check it over the shell: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${WORDPRESS_HOST}" "sudo ls -ld /var/www/html/wp-content/plugins/<slug>"` should show `www-data`. If you had to use `--allow-root` instead, the files are root's, and the entrypoint only re-chowns `wp-content/uploads/` on boot — so those root-owned files persist and will later block updates of that plugin. Re-chown them:
 
 ```bash
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-  -o StrictHostKeyChecking=accept-new "clouve-ops@${WORDPRESS_HOST}" \
-  "chown -R www-data:www-data /var/www/html/wp-content/plugins/<slug>"
+  -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "clouve-ops@${WORDPRESS_HOST}" \
+  "sudo chown -R www-data:www-data /var/www/html/wp-content/plugins/<slug>"
 ```
 
 Then run the same **A3** verification (active_plugins + site 200).
@@ -96,7 +94,7 @@ Then run the same **A3** verification (active_plugins + site 200).
 
 Activation broke the site, or the plugin isn't wanted:
 
-- **Preferred — `/wp-admin` (Path A) or `wp plugin deactivate <slug> --allow-root` (Path B):** deactivates just that plugin, cleanly.
+- **Preferred — `/wp-admin` (Path A) or `wp.sh plugin deactivate <slug> --skip-plugins=<slug>` over the shell (Path B; [wp.sh](../scripts/wp.sh)):** deactivates just that plugin, cleanly. `--skip-plugins=<slug>` keeps wp-cli from loading the plugin first, so one that fatals on load can't kill the command.
 - **[TCP-mysql] fallback — deactivate *all* plugins only.** You can safely blank `active_plugins` to the empty-array constant `a:0:{}`, but you must **not** hand-edit the serialized array to remove a single entry — a byte-count mismatch silently corrupts it (SKILL.md principle 6). Deactivating everything is the WSOD-isolation move and it has its own gate (**record the current `active_plugins` first + ack** — you captured it in A1). The full procedure, including restoring the saved value, lives in [diagnose-500.md](diagnose-500.md); use it rather than free-handing the SQL here.
 
 After any rollback, re-verify the site returns 200 and tell the user exactly what state the plugin set is in now.

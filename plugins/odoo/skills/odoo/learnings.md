@@ -115,7 +115,7 @@ The Odoo container has no copy of `scripts/backup.sh`: pipe the skill's own copy
 **Category:** correction
 **Origin:** Same shoot: the install playbook asked for pod restarts the agent can't do.
 
-Odoo is PID 1 in its container and re-executes itself on `sudo kill -HUP 1`. Module installs and upgrades run while it serves. See [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo) and [playbooks/install-or-upgrade-module.md](playbooks/install-or-upgrade-module.md).
+`grep -q odoo /proc/1/cmdline && sudo kill -HUP 1` makes Odoo re-execute itself in its container. Module installs and upgrades run while it serves. See [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo) and [playbooks/install-or-upgrade-module.md](playbooks/install-or-upgrade-module.md).
 
 ---
 
@@ -134,3 +134,12 @@ An `odoo` command run with `sudo` over the clouve-ops channel needs its config (
 **Origin:** Odoo logged "invalid addons directory '/mnt/extra-addons'" on every command.
 
 The image writes `addons_path = ...,/mnt/extra-addons*`. Odoo skips the folder quietly while it holds no module and loads it at the next start once one is there, so restart Odoo (`SIGHUP`) after adding the first module. Images built before 2026-10-20 list the plain path and log that warning while the folder is empty; it is harmless. See [reference/configuration.md](reference/configuration.md#this-images-conf-template).
+
+---
+
+### 2026-11-02 — tini is PID 1; SSH host keys change at every start
+
+**Category:** correction
+**Origin:** Clouve's 4.5.3 release changed both Odoo images.
+
+From the 2026-11-02 images on, tini is PID 1 in the Odoo and PostgreSQL containers and passes signals on, so the restart command is unchanged. Neither image holds SSH host keys: each container makes new ones when it starts. Every `ssh` and `scp` in this skill passes `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, and none relies on a saved key. Fixed in place in [SKILL.md](SKILL.md), [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo), [reference/shell-access.md](reference/shell-access.md#clouve-ops-ssh-channel) and the playbooks.
