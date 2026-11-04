@@ -47,19 +47,21 @@
 # 2 as well.
 #
 # The sign-in check posts the login and the password (on curl's stdin, URL-encoded by curl) to
-# the site's own sign-in page, WORDPRESS_SITE_URL/wp-login.php, with WordPress's test cookie.
-# It goes there, and not to the container, because WordPress forces SSL for wp-login.php when
-# the site's address is https: a plain-HTTP request to the container gets a redirect before the
-# password is checked. When WORDPRESS_SITE_URL isn't https (or isn't set), the check posts to
-# http://WORDPRESS_HOST/wp-login.php instead, so a password sent in clear never leaves the
-# cluster. WordPress's answer headers go to a file in the temporary folder, deleted straight
-# after, and are never printed: they hold a live session. The check counts as accepted only when
-# WordPress answers 302, sets its wordpress_logged_in_ cookie and redirects to wp-admin, or first
-# to the admin email check it shows an administrator every six months. A 302 alone proves
-# nothing: with FORCE_SSL_ADMIN on, or a plugin that hides wp-login.php, WordPress redirects
-# before it checks the password. Any other answer reads "Couldn't confirm the sign-in", and the
-# admin tries the password in a private browser window, since WordPress, or a security plugin
-# in front of it, can also turn down a sign-in that a script makes.
+# the WordPress container itself, http://WORDPRESS_HOST/wp-login.php, with WordPress's test
+# cookie, so the password never leaves the cluster. When the site's address (WORDPRESS_SITE_URL)
+# is https, WordPress forces SSL for wp-login.php and would redirect a plain-HTTP request before
+# it checks the password, so the check then also sends X-Forwarded-Proto: https, the header the
+# site's ingress sends with every request. The official image's wp-config.php honours it and
+# treats the request as HTTPS. WordPress's answer headers go to a file in the temporary folder,
+# deleted straight after, and are never printed: they hold a live session. The check counts as
+# accepted only when WordPress answers 302, sets its wordpress_logged_in_ cookie and redirects
+# to wp-admin, or first to the admin email check it shows an administrator every six months. A
+# 302 alone proves nothing: with FORCE_SSL_ADMIN on, when the check couldn't say it came over
+# HTTPS (WORDPRESS_SITE_URL isn't https) or the site's wp-config.php ignores X-Forwarded-Proto,
+# or with a plugin that hides wp-login.php, WordPress redirects before it checks the password.
+# Any other answer reads "Couldn't confirm the sign-in", and the admin tries the password in a
+# private browser window, since WordPress, or a security plugin in front of it, can also turn
+# down a sign-in that a script makes.
 #
 # Output: one line on stdout that names the file and says what the sign-in check found. The
 # password and the full path are never printed. What wp-cli or mysql says on a failure goes to
@@ -75,7 +77,7 @@
 #   WORDPRESS_TABLE_PREFIX  default wp_
 #   WORDPRESS_HOST          the WordPress sibling (default wordpress)
 #   WORDPRESS_SITE_URL      optional: the site's own address, for the sign-in page written into
-#                           the file and, when it is https, for the sign-in check
+#                           the file; when it is https, the sign-in check sends X-Forwarded-Proto
 #   CLOUVE_OPS_PASSWORD     the clouve-ops password, for the shell (never printed)
 #   HOME                    where ~/wordpress-passwords lives
 #
@@ -382,17 +384,18 @@ finish() {
         exit 2
     fi
 
-    # The site's own address when it is https (WordPress forces SSL for wp-login.php then, so a
-    # plain-HTTP request to the container is redirected before the password is checked); the
-    # container's own address otherwise, so a password sent in clear stays inside the cluster.
-    # -q comes first so that no ~/.curlrc changes the request. The post to the container goes
+    # The container itself, so the password stays inside the cluster. With an https site,
+    # WordPress forces SSL for wp-login.php and would redirect this plain-HTTP request before it
+    # checks the password, so the request says it came over HTTPS, as the site's ingress does with
+    # X-Forwarded-Proto. -q comes first so that no ~/.curlrc changes the request, and the post goes
     # through no proxy.
     sign_in_url="http://${WORDPRESS_HOST}/wp-login.php"
     curl_opts=(-q -s --noproxy '*')
+    redirect_why="With FORCE_SSL_ADMIN on (the check didn't say it came over HTTPS, since WORDPRESS_SITE_URL isn't https here), or a plugin that hides wp-login.php, WordPress redirects before it checks the password"
     case "${WORDPRESS_SITE_URL:-}" in
         https://?*)
-            sign_in_url="${WORDPRESS_SITE_URL%/}/wp-login.php"
-            curl_opts=(-q -s)
+            curl_opts+=(-H 'X-Forwarded-Proto: https')
+            redirect_why="With FORCE_SSL_ADMIN on and a wp-config.php that ignores X-Forwarded-Proto, or a plugin that hides wp-login.php, WordPress redirects before it checks the password"
             ;;
     esac
     if ! command -v curl > /dev/null 2>&1; then
@@ -410,13 +413,12 @@ finish() {
         if [ "${code}" = 302 ] && signed_in "${headers}"; then
             result="WordPress accepted it at sign-in"
         elif [ "${code}" = 302 ]; then
-            result="Couldn't confirm the sign-in: WordPress answered with a redirect, but not with a signed-in session in wp-admin. With FORCE_SSL_ADMIN on, or a plugin that hides wp-login.php, WordPress redirects before it checks the password. Have the admin try the password in a private browser window"
+            result="Couldn't confirm the sign-in: WordPress answered with a redirect, but not with a signed-in session in wp-admin. ${redirect_why}. Have the admin try the password in a private browser window"
         elif [ -z "${code}" ] || [ "${code}" = 000 ]; then
             case "${curl_rc}" in
-                6) why="the address doesn't resolve from here" ;;
+                6) why="the WordPress host doesn't resolve from here" ;;
                 7) why="the connection was refused" ;;
                 28) why="it didn't answer within 15 seconds" ;;
-                35 | 51 | 58 | 60) why="its TLS certificate couldn't be checked" ;;
                 *) why="curl exit ${curl_rc}" ;;
             esac
             result="Couldn't confirm the sign-in: there was no answer from WordPress at ${sign_in_url} (${why}). Have the admin try the password in a private browser window"
