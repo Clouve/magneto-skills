@@ -46,8 +46,12 @@
 # - The sign-in check posted to the container's own address over plain HTTP. When the site's
 #   address is https, WordPress forces SSL for wp-login.php and redirects there before it checks
 #   the password, so the check could never confirm a sign-in. The stand-in curl answers that way.
-#   Fails unless the check posts to the site's own https address, and keeps an http or missing
-#   site address on the container's own address, so a password sent in clear stays in the cluster.
+#   wordpress 0.1.7 (decided on 2026-11-03) keeps the check inside the cluster: it posts to the
+#   container's own address with an X-Forwarded-Proto: https header when the site's address is
+#   https (the official image's wp-config.php then treats the request as HTTPS, as it does the
+#   ingress's), and without it otherwise. Fails unless it does, and when it ever posts to the
+#   site's public address, which the stand-in can't reach, so the password never leaves the
+#   cluster.
 #
 # No network and no Docker: the script runs under `env -i` with the stand-ins first on PATH, and
 # everything is written under mktemp -d.
@@ -256,14 +260,16 @@ esac
 EOF
 
 # curl answers the sign-in check the way WordPress does. It writes the response headers to the
-# file -D names and prints the status code. Where the check posts decides first. FAKE_SITE is the
-# site's own address (WordPress's siteurl; default https://blog.example.test):
-#   FAKE_SITE/wp-login.php        WordPress answers as FAKE_SIGN_IN says (below)
+# file -D names and prints the status code, and keeps each -H header in $FAKE_STATE/curl-headers.
+# Where the check posts decides first. FAKE_SITE is the site's own address (WordPress's siteurl;
+# default https://blog.example.test):
 #   http://wp-host/wp-login.php   the WordPress container's own address, over plain HTTP. With an
-#                                 https site, WordPress forces SSL for wp-login.php and redirects
-#                                 before it checks the password, with no cookie (the force-ssl
-#                                 answer below); with an http site it answers as FAKE_SIGN_IN says
-#   anything else                 no such host: curl prints 000 and exits 6
+#                                 https site, WordPress forces SSL for wp-login.php: unless the
+#                                 request carries X-Forwarded-Proto: https, it redirects before it
+#                                 checks the password, with no cookie (the force-ssl answer below).
+#                                 Otherwise it answers as FAKE_SIGN_IN says
+#   anything else                 no such host from the agent, the site's public address included:
+#                                 curl prints 000 and exits 6
 # FAKE_SIGN_IN picks the answer:
 #   wp-admin     (default) the password works: 302 to wp-admin, with the logged-in cookie
 #   admin-email  the password works, and WordPress first sends an administrator to confirm the
@@ -281,7 +287,7 @@ cat > "$bin/curl" <<'EOF'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
-headers="" url=""
+headers="" url="" https_header=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -D | --dump-header) headers="${2:-}"; shift 2 ;;
@@ -289,7 +295,12 @@ while [ "$#" -gt 0 ]; do
       [ "${2:-}" = "pwd@-" ] && cat > "$FAKE_STATE/curl-stdin"
       shift 2
       ;;
-    -o | -w | -b | -H | --max-time | --proto | --proto-redir | --noproxy) shift 2 ;;
+    -H | --header)
+      printf '%s\n' "${2:-}" >> "$FAKE_STATE/curl-headers"
+      [ "${2:-}" = "X-Forwarded-Proto: https" ] && https_header=1
+      shift 2
+      ;;
+    -o | -w | -b | --max-time | --proto | --proto-redir | --noproxy) shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
   esac
@@ -297,12 +308,9 @@ done
 site="${FAKE_SITE:-https://blog.example.test}"
 answer="${FAKE_SIGN_IN:-wp-admin}"
 case "$url" in
-  "$site/wp-login.php") ;;
-  http://wp-host/wp-login.php) case "$site" in https://*) answer=force-ssl ;; esac ;;
+  http://wp-host/wp-login.php) case "$site" in https://*) [ "$https_header" -eq 1 ] || answer=force-ssl ;; esac ;;
   *) printf '000'; exit 6 ;;
 esac
-# badcert: the site's certificate can't be checked (curl exit 60)
-if [ "$answer" = badcert ]; then printf '000'; exit 60; fi
 session="admin%7C1762300000%7Cfake-session-token-5d2c%7Cfakehmac"
 test_cookie="Set-Cookie: wordpress_test_cookie=WP%20Cookie%20check; path=/"
 auth="Set-Cookie: wordpress_0123abcd=$session; path=/wp-admin; HttpOnly"
@@ -373,7 +381,7 @@ run() {
   err="$work/$name/err"
   mkdir -p "$state" "$home"
   : > "$state/argv"
-  rm -f "$state/hash-reads" "$state/wp-env" "$state/sudo-users"
+  rm -f "$state/hash-reads" "$state/wp-env" "$state/sudo-users" "$state/curl-headers"
   echo "hash-before" > "$state/user_pass"
   # The accounts the lookup finds, unless the case wrote its own: admin is 61 64 6d 69 6e (ID 5),
   # o'brien is 6f 27 62 72 69 65 6e (ID 7).
@@ -453,8 +461,9 @@ check "ssh keeps and checks no saved host key" \
 check "ssh went to clouve-ops on the WordPress host" 'grep -qx "clouve-ops@wp-host" "$state/ssh-targets"'
 check "the sign-in check got the password on curl's stdin" \
   '[ -n "$pw" ] && [ "$(cat "$state/curl-stdin" 2> /dev/null)" = "$pw" ]'
-check "the sign-in check posts to the site's own address, https://blog.example.test/wp-login.php" \
-  'grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/wp-login.php" && ! grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/"'
+check "the sign-in check posts to the WordPress container with X-Forwarded-Proto: https, never to the site's public address" \
+  'grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$"'
+check "  through no proxy" 'grep -E "^curl " "$state/argv" | grep -qF -- "--noproxy *"'
 check "stdout says WordPress took the password at sign-in" 'grep -qi "accepted" "$out"'
 check "curl ignores ~/.curlrc (-q comes first)" 'grep -qE "^curl -q " "$state/argv"'
 check "the deployment's own passwords stay off every command line" \
@@ -479,32 +488,30 @@ check "mysql got the MD5 write on its stdin, for ID 5 only" \
 check "no ssh was run" '! grep -qE "^(ssh|sshpass) " "$state/argv"'
 check "the sign-in check got the password on curl's stdin" \
   '[ -n "$pw" ] && [ "$(cat "$state/curl-stdin" 2> /dev/null)" = "$pw" ]'
-check "the sign-in check posts to the site's own address, and stdout says WordPress took the password" \
-  'grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/wp-login.php" && grep -qi "accepted" "$out"' \
+check "the sign-in check posts to the container with X-Forwarded-Proto: https, and stdout says WordPress took the password" \
+  'grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$" && grep -qi "accepted" "$out"' \
   || show "$out"
 
 echo
 echo "Where the sign-in check posts"
 run subdir WORDPRESS_SITE_URL=https://blog.example.test/news/ FAKE_SITE=https://blog.example.test/news -- admin
-check "a site in a folder: the check posts to https://blog.example.test/news/wp-login.php and WordPress accepts it" \
-  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "https://blog.example.test/news/wp-login.php" && grep -qi "accepted" "$out"' \
+check "a site in a folder: the check still posts to the container's wp-login.php with the header, and WordPress accepts it" \
+  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$" && grep -qi "accepted" "$out"' \
   || show "$out" "$err"
 run httpsite WORDPRESS_SITE_URL=http://blog.example.test FAKE_SITE=http://blog.example.test -- admin
-check "an http site: the check stays on the container's own address, so the password crosses no other network in clear" \
-  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && ! grep -E "^curl " "$state/argv" | grep -qF "http://blog.example.test" && grep -qi "accepted" "$out"' \
+check "an http site: the check posts to the container without the header, and WordPress accepts it" \
+  '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && ! grep -qF "X-Forwarded-Proto" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qF "http://blog.example.test" && grep -qi "accepted" "$out"' \
   || show "$out" "$err"
-check "  and that post to the container goes through no proxy" 'grep -E "^curl " "$state/argv" | grep -qF -- "--noproxy *"'
-run nohostname WORDPRESS_SITE_URL=https://elsewhere.example.test -- admin
-check "the site's address doesn't resolve from here: exit 0, and the line says so" \
+run nohostname WORDPRESS_HOST=nowhere -- admin
+check "the WordPress host doesn't resolve from here: exit 0, and the line says so" \
   '[ "$rc" -eq 0 ] && grep -qi "couldn.t confirm the sign-in" "$out" && grep -qi "resolve" "$out"' || show "$out" "$err"
-run badcert FAKE_SIGN_IN=badcert -- admin
-check "the site's certificate can't be checked: exit 0, and the line says so" \
-  '[ "$rc" -eq 0 ] && grep -qi "couldn.t confirm the sign-in" "$out" && grep -qi "certificate" "$out"' || show "$out" "$err"
 run nosite WORDPRESS_SITE_URL= -- admin
 pw="$(password_in "$(password_files | head -n 1)" 2> /dev/null || true)"
 check "no site address: the check posts to the container's own address, and with an https site it can't confirm (exit 0)" \
   '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qi "couldn.t confirm the sign-in" "$out"' \
   || show "$out" "$err"
+check "  and the line says why the check didn't say it came over HTTPS, without blaming X-Forwarded-Proto" \
+  'grep -qi "WORDPRESS_SITE_URL isn.t https" "$out" && ! grep -qi "ignores X-Forwarded-Proto" "$out"' || show "$out"
 check "  and the file is kept, with no sign-in page line and the password in no output" \
   '[ -n "$pw" ] && ! grep -q "^Sign in at:" "$(password_files | head -n 1)" && [ -z "$(leaks "$pw")" ]'
 
@@ -592,6 +599,8 @@ not_confirmed() {
 not_confirmed force-ssl "FORCE_SSL_ADMIN redirects to wp-admin before checking the password, with no cookie"
 check "  and the line names what redirects before the password is checked (FORCE_SSL_ADMIN, a plugin that hides wp-login.php)" \
   'grep -qF "FORCE_SSL_ADMIN" "$out" && grep -qi "hides wp-login.php" "$out"'
+check "  and, since the check said it came over HTTPS, a wp-config.php that ignores X-Forwarded-Proto" \
+  'grep -qi "ignores X-Forwarded-Proto" "$out"'
 not_confirmed hide-login "a plugin that hides wp-login.php redirects to its 404 page"
 not_confirmed elsewhere "the logged-in cookie, but a redirect to the front page instead of wp-admin"
 not_confirmed form "the login form came back (HTTP 200)"
