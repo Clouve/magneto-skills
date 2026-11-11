@@ -35,7 +35,7 @@ fi
 : "${MOODLE_HOST:?MOODLE_HOST not set}"
 : "${CLOUVE_OPS_PASSWORD:?CLOUVE_OPS_PASSWORD not set}"
 
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no -o ConnectTimeout=10)
+ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=10)
 
 ssh_run() {
     SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh "${ssh_opts[@]}" \
@@ -67,11 +67,12 @@ foreach (\$keys as \$k) {
 echo
 
 echo "--- Extensions Moodle needs ---"
-required="iconv mbstring curl openssl ctype zip zlib gd simplexml spl pcre dom"
-recommended="tokenizer soap intl exif fileinfo opcache"
+# Moodle 5.2 and 5.3 require the same extensions (public/admin/environment.xml).
+required="iconv mbstring curl openssl ctype zip zlib gd simplexml spl pcre dom xml xmlreader intl json hash fileinfo sodium filter"
+recommended="tokenizer soap exif opcache"
 ssh_run "php -r '
 \$loaded = get_loaded_extensions();
-echo \"# REQUIRED (5.2):\n\";
+echo \"# REQUIRED (Moodle 5.2 and 5.3):\n\";
 foreach ([\"$required\"] as \$line) {
     foreach (preg_split(\"/\\s+/\", \$line) as \$ext) {
         if (\$ext === \"\") continue;

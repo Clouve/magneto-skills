@@ -74,17 +74,18 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo apachectl graceful'
 
 ```bash
 sshpass -e ssh clouve-ops@${MOODLE_HOST} \
-    'sudo -u www-data php /var/www/html/admin/cli/checks.php --filter=security'
+    'sudo -u www-data php /var/www/html/admin/cli/checks.php --type=security'
 ```
 
-Or browse to Site administration → Reports → Security checks.
+Or browse to Site administration → Reports → Security checks. If the command stops with `Class "curl" not found`, that's an upstream bug in 5.2 and 5.3: use the web report.
 
-**Every red item must be resolved before opening the site.** Common items:
+**Every red item must be resolved before opening the site**, except the ones the site can't fix on the Clouve image: [reference/changes-in-5.3.md](../reference/changes-in-5.3.md#checks-that-fail-on-every-clouve-site) lists them. Tell the user about those rather than chasing them. Common items:
 
 - "No login attempt limit" — set a brute-force lockout under Site administration → Security → Site security settings.
 - "No password policy" — set a password policy.
 - "Frame embedding allowed" — `$CFG->allowframembedding = 0` unless you have a documented LTI use case.
 - "Default user role has too many capabilities" — review the default role.
+- "Security message notifications" (new in 5.3) — enable and lock the "New login" notification for every output in Site administration → Messaging → Notification settings.
 
 ## 6. Set a password policy
 
@@ -204,7 +205,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php'
 ```
 
-All checks pass. If anything is red, address it before this checklist is "done".
+This runs the status checks. On the Clouve image `core_router` is always an ERROR here (see the same list); everything else should pass. If anything else is red, address it before this checklist is "done".
 
 ## Tell the user
 

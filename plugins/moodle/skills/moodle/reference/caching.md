@@ -1,10 +1,10 @@
 # MUC — Moodle Universal Cache
 
-Every cache in Moodle goes through MUC. The framework lives in [public/cache/](https://github.com/moodle/moodle/tree/v5.2.0/public/cache); definitions are declared in `db/caches.php` of each component.
+Every cache in Moodle goes through MUC. The framework lives in [public/cache/](https://github.com/moodle/moodle/tree/v5.3.0/public/cache); definitions are declared in `db/caches.php` of each component.
 
-## Stores in 5.2
+## Stores in 5.2 and 5.3
 
-What ships in core, from [public/cache/stores/](https://github.com/moodle/moodle/tree/v5.2.0/public/cache/stores):
+What ships in core, from [public/cache/stores/](https://github.com/moodle/moodle/tree/v5.3.0/public/cache/stores):
 
 | Store | Path | When to use |
 |---|---|---|
@@ -14,17 +14,17 @@ What ships in core, from [public/cache/stores/](https://github.com/moodle/moodle
 | `redis` | `cache/stores/redis/` | Redis-backed. Cluster-safe by definition. Recommended for the **application** cache mode. |
 | `session` | `cache/stores/session/` | PHP `$_SESSION`-backed. Used internally for session-scoped caches. |
 
-**Notably absent in 5.2**:
+**Notably absent since 5.2**:
 
-- `memcached` cache store — **removed**. (memcached survives only as a *session* handler at [public/lib/classes/session/memcached.php](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/classes/session/memcached.php).)
+- `memcached` cache store — **removed**. (memcached survives only as a *session* handler at [public/lib/classes/session/memcached.php](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/classes/session/memcached.php).)
 - `mongodb` cache store — **removed**.
 - `memcache` (older) — long gone.
 
-If you find a `mappingsonly => ['memcached' => ...]` block in an upgraded site's MUC config, it'll fail to load on 5.2. Replace with `redis`. See [troubleshooting.md](troubleshooting.md).
+If you find a `mappingsonly => ['memcached' => ...]` block in an upgraded site's MUC config, it'll fail to load on 5.2 and later. Replace with `redis`. See [troubleshooting.md](troubleshooting.md).
 
-### Redis in 5.2: split timeouts
+### Redis since 5.2: split timeouts
 
-Per [UPGRADING.md](https://github.com/moodle/moodle/blob/v5.2.0/UPGRADING.md): "Redis connection timeout settings for cachestores and sessions have been split into connection timeout and read timeout to allow for finer control. These settings now also accept floats." (MDL-85336)
+Per [UPGRADING.md](https://github.com/moodle/moodle/blob/v5.3.0/UPGRADING.md): "Redis connection timeout settings for cachestores and sessions have been split into connection timeout and read timeout to allow for finer control. These settings now also accept floats." (MDL-85336)
 
 Practical impact: any pre-5.2 `config.php` that set `$CFG->session_redis_timeout` should now set both `$CFG->session_redis_connection_timeout` and `$CFG->session_redis_read_timeout`. Same change applies to the `cachestore_redis` admin UI.
 
@@ -87,7 +87,7 @@ After ANY of these, run `admin/cli/purge_caches.php`:
 - Language pack install
 - Major user-role change at the site level
 
-[admin/cli/purge_caches.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/purge_caches.php) supports targeted purges:
+[admin/cli/purge_caches.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/purge_caches.php) supports targeted purges:
 
 | Flag | Purges |
 |---|---|

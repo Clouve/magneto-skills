@@ -16,7 +16,7 @@ Both are valid use cases. They serve different purposes:
 
 ## Course-level: `.mbz` backups
 
-[admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/backup.php) and [admin/cli/restore_backup.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/restore_backup.php) drive the backup API from the CLI. The `.mbz` format is a zip with a manifest, course metadata, activity-by-activity dumps, and the files themselves embedded.
+[admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/backup.php) and [admin/cli/restore_backup.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/restore_backup.php) drive the backup API from the CLI. The `.mbz` format is a zip with a manifest, course metadata, activity-by-activity dumps, and the files themselves embedded.
 
 ```bash
 # Back up course id=42 to /tmp/course-42.mbz
@@ -133,7 +133,7 @@ This is the **disaster-recovery** flow. New empty container, fresh DB, the backu
 
 ### Cross-version restore (DON'T)
 
-If your code is **newer** than the backup, you'll need to upgrade after restore. Order: restore DB + dataroot at the *backup's* version, run `admin/cli/upgrade.php`, run `purge_caches.php`. Only do this when the backup version is reachable in the upgrade path (5.2 requires 4.4+).
+If your code is **newer** than the backup, you'll need to upgrade after restore. Order: restore DB + dataroot at the *backup's* version, run `admin/cli/upgrade.php`, run `purge_caches.php`. Only do this when the backup version is reachable in the upgrade path (5.2 and 5.3 require 4.4+).
 
 If your code is **older** than the backup, **stop**. There is no downgrade path. Restore at the original version's image instead.
 

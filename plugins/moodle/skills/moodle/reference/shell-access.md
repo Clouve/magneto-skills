@@ -23,7 +23,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
     "sudo tail -50 /var/log/apache2/error.log"
 ```
 
-The first connection prints a host-key fingerprint warning — accept it once (`StrictHostKeyChecking` interactively, or pass `-o StrictHostKeyChecking=accept-new` on the first run; the host key is captured to `~/.ssh/known_hosts` for subsequent connections).
+Don't rely on a saved host key. From the 5.3 image on, the `moodle` container makes a new SSH host key at every start, so a key saved earlier is wrong after the next restart. The AI Assistant (Magneto Agent 4.5.3 or later) saves no key for its sibling containers, so the commands here connect as they are. The skill's scripts pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, which take the key the container shows and save nothing. If ssh still stops with "REMOTE HOST IDENTIFICATION HAS CHANGED", or `sshpass` exits 6 and prints nothing, the agent has no SSH settings for this container: add those two options to the command.
 
 ## When SSH is the right tool
 

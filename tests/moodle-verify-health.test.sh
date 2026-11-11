@@ -14,18 +14,24 @@
 #     over the clouve-ops channel. Not $CFG->version, which is the database's
 #     version, and nothing the remote shell can expand on the way.
 #   - version_invariant: code and database versions are compared as numbers
-#     (version.php says 2026042000.00, mdl_config says 2026042000).
+#     (version.php says 2026100500.00, mdl_config says 2026100500). A 5.2 site
+#     whose 5.3 upgrade hasn't run (code 2026100500, database 2026042000) is a
+#     WARN.
 #   - cron_freshness: mdl_task_log.timestart is a decimal column, so
 #     MAX(timestart) comes back as 1792790161.4598000000; the age is still
 #     worked out in whole seconds, with no shell arithmetic error.
+#   - ssh options: every ssh to the sibling passes
+#     -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null. The
+#     Moodle image makes a new host key at every container start, so a key saved
+#     earlier would be wrong and ssh would refuse the connection.
 #
 # Fakes, first on PATH:
 #   curl     prints 200 when it was given "-H Host: ${FAKE_SITE_HOST}", 303
 #            otherwise (what Moodle does), and records its arguments;
 #   mysql    answers the script's three queries the way MySQL would
 #            (FLOOR()/CAST() of MAX(timestart) gives whole seconds);
-#   sshpass  plays the sibling: it runs the remote command (and any script on
-#            stdin) in a real bash, with /var/www/html mapped to a temp folder,
+#   sshpass  records its arguments, then plays the sibling: it runs the remote
+#            command (and any script on stdin) in a real bash, with /var/www/html mapped to a temp folder,
 #            so quoting and expansion bugs show up as they would over ssh;
 #   sudo     runs the command without the -n/-u options;
 #   php      `php -r CODE` behaves like PHP for the old one-liner: it prints
@@ -81,6 +87,7 @@ FAKE
 
 cat > "${bin}/sshpass" <<'FAKE'
 #!/bin/bash
+printf 'sshpass %s\n' "$*" >> "${FAKE_CALLS}"
 [ "$1" = "-e" ] && shift
 [ "$1" = "ssh" ] && shift
 while [ "$#" -gt 0 ]; do
@@ -135,8 +142,8 @@ make_www() { # <dir> <where: public|root> <version literal>
 defined('MOODLE_INTERNAL') || die();
 
 \$version  = ${v};              // YYYYMMDD      = weekly release date of this DEV branch.
-\$release  = '5.2 (Build: 20260420)'; // Human-friendly version name
-\$branch   = '502';                     // This version's branch.
+\$release  = '5.3 (Build: 20261005)'; // Human-friendly version name
+\$branch   = '503';                     // This version's branch.
 \$maturity = MATURITY_STABLE;           // This version's maturity level.
 PHP
 }
@@ -151,7 +158,7 @@ run_case() {
   out="$(env -i HOME="${dir}" PATH="${bin}:/usr/bin:/bin" FAKE_BIN="${bin}" FAKE_CALLS="${dir}/calls" \
       MOODLE_HOST=tkt-7-moodle MOODLE_DB_HOST=tkt-7-moodle-mysql MOODLE_DB_USER=moodle MOODLE_DB_NAME=moodle \
       MOODLE_DB_PASSWORD=db-pass CLOUVE_OPS_PASSWORD=ops-pass \
-      FAKE_DB_VERSION=2026042000 FAKE_LAST_CRON="$(( $(date +%s) - 30 )).4598000000" \
+      FAKE_DB_VERSION=2026100500 FAKE_LAST_CRON="$(( $(date +%s) - 30 )).4598000000" \
       FAKE_WWW="${work}/www-public" FAKE_SITE_HOST=site.example.com MOODLE_URL=https://site.example.com \
       "$@" bash "${script}" </dev/null 2>&1)"
   rc=$?
@@ -160,9 +167,9 @@ run_case() {
 
 line() { printf '%s\n' "${out}" | grep -E "^$1 " | head -1; }
 
-make_www "${work}/www-public" public 2026042000.00
-make_www "${work}/www-root" root 2026042000.00
-make_www "${work}/www-newer" public 2026042000.00
+make_www "${work}/www-public" public 2026100500.00
+make_www "${work}/www-root" root 2026100500.00
+make_www "${work}/www-newer" public 2026100500.00
 make_www "${work}/www-point" public 2024100700.01
 
 echo "verify-health.sh: a healthy site on Kubernetes (https MOODLE_URL)"
@@ -173,10 +180,10 @@ else bad "login page probe: wanted OK 200, got: ${l:-<no line>}" "${calls}"; fi
 if printf '%s\n' "${calls}" | grep -q -- "-H Host: site.example.com"; then ok "the probe sends Host: site.example.com"
 else bad "the probe never sent Host: site.example.com" "${calls}"; fi
 l="$(line code_version)"
-if [[ "${l}" =~ code_version\ +OK\ +version=2026042000$ ]]; then ok "code version read from public/version.php (2026042000)"
-else bad "code_version: wanted OK version=2026042000, got: ${l:-<no line>}" "${out}"; fi
+if [[ "${l}" =~ code_version\ +OK\ +version=2026100500$ ]]; then ok "code version read from public/version.php (2026100500)"
+else bad "code_version: wanted OK version=2026100500, got: ${l:-<no line>}" "${out}"; fi
 l="$(line version_invariant)"
-if [[ "${l}" =~ version_invariant\ +OK ]]; then ok "2026042000.00 in the code matches 2026042000 in the database"
+if [[ "${l}" =~ version_invariant\ +OK ]]; then ok "2026100500.00 in the code matches 2026100500 in the database"
 else bad "version_invariant: wanted OK, got: ${l:-<no line>}" "${out}"; fi
 l="$(line cron_freshness)"
 if [[ "${l}" =~ cron_freshness\ +OK\ +(29|30|31|32)s\ ago ]]; then ok "cron age from a decimal MAX(timestart): ${l##* OK }"
@@ -184,6 +191,13 @@ else bad "cron_freshness: wanted OK ~30s ago, got: ${l:-<no line>}" "${out}"; fi
 if printf '%s\n' "${out}" | grep -q 'syntax error'; then bad "the output holds a shell syntax error" "${out}"; else ok "no shell arithmetic error"; fi
 if [ "${rc}" -eq 0 ] && printf '%s\n' "${out}" | grep -q '^Overall: GREEN'; then ok "Overall: GREEN, exit 0"
 else bad "wanted Overall: GREEN and exit 0, got exit ${rc}" "${out}"; fi
+ssh_calls="$(printf '%s\n' "${calls}" | grep '^sshpass ' || true)"
+if [ -z "${ssh_calls}" ]; then bad "the script never called sshpass" "${calls}"
+elif printf '%s\n' "${ssh_calls}" | grep -v -e '-o StrictHostKeyChecking=accept-new' | grep -q .; then
+  bad "an ssh call lacks -o StrictHostKeyChecking=accept-new" "${ssh_calls}"
+elif printf '%s\n' "${ssh_calls}" | grep -v -e '-o UserKnownHostsFile=/dev/null' | grep -q .; then
+  bad "an ssh call lacks -o UserKnownHostsFile=/dev/null (the sibling's host key changes at every start)" "${ssh_calls}"
+else ok "every ssh call passes StrictHostKeyChecking=accept-new and UserKnownHostsFile=/dev/null"; fi
 
 echo "verify-health.sh: a local docker-compose stack (http MOODLE_URL with a port)"
 run_case local MOODLE_URL=http://localhost:8080 FAKE_SITE_HOST=localhost:8080 MOODLE_HOST=moodle
@@ -194,13 +208,13 @@ else bad "local probe: wanted OK 200 with Host: localhost:8080, got: ${l:-<no li
 echo "verify-health.sh: version.php at the code root (no public/)"
 run_case root FAKE_WWW="${work}/www-root"
 l="$(line code_version)"
-if [[ "${l}" =~ code_version\ +OK\ +version=2026042000$ ]]; then ok "code version read from version.php at the root"
+if [[ "${l}" =~ code_version\ +OK\ +version=2026100500$ ]]; then ok "code version read from version.php at the root"
 else bad "code_version at the root: got: ${l:-<no line>}" "${out}"; fi
 
-echo "verify-health.sh: code newer than the database (an upgrade pending)"
-run_case newer FAKE_WWW="${work}/www-newer" FAKE_DB_VERSION=2025100600
+echo "verify-health.sh: a 5.2 site whose upgrade to 5.3 is pending (code newer than the database)"
+run_case newer FAKE_WWW="${work}/www-newer" FAKE_DB_VERSION=2026042000
 l="$(line version_invariant)"
-if [[ "${l}" =~ version_invariant\ +WARN\ +code=2026042000\ \>\ db=2025100600 ]]; then ok "WARN: code 2026042000 > db 2025100600"
+if [[ "${l}" =~ version_invariant\ +WARN\ +code=2026100500\ \>\ db=2026042000 ]]; then ok "WARN: code 2026100500 > db 2026042000"
 else bad "version_invariant with a pending upgrade: got: ${l:-<no line>}" "${out}"; fi
 
 echo "verify-health.sh: a weekly build's decimal version"

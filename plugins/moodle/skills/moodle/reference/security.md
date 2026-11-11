@@ -1,6 +1,6 @@
 # Security
 
-A working hardening posture for a Moodle 5.2 site. Treat this as a pre-flight checklist before letting users in, and as the diagnosis ladder when something's reported as a security concern.
+A working hardening posture for a Moodle 5.2 or 5.3 site. Treat this as a pre-flight checklist before letting users in, and as the diagnosis ladder when something's reported as a security concern.
 
 ## TLS and the `wwwroot`/sslproxy contract
 
@@ -72,7 +72,7 @@ $CFG->aspellpath      = '/usr/bin/aspell';     // if spell-check enabled
 $CFG->pathtodot       = '/usr/bin/dot';        // if Graphviz used
 ```
 
-Reference: [config-dist.php line ~609](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php).
+Reference: [config-dist.php line ~609](https://github.com/moodle/moodle/blob/v5.3.0/config-dist.php).
 
 ## Antivirus on user uploads
 
@@ -112,7 +112,7 @@ Refresh the page; never disable sesskey checks.
 
 ## Authentication
 
-Moodle ships with multiple auth plugins under [public/auth/](https://github.com/moodle/moodle/tree/v5.2.0/public/auth). The defaults relevant for school deployments:
+Moodle ships with multiple auth plugins under [public/auth/](https://github.com/moodle/moodle/tree/v5.3.0/public/auth). The defaults relevant for school deployments:
 
 | Plugin | When to enable |
 |---|---|
@@ -151,10 +151,17 @@ For school admin accounts, additionally enable two-factor auth via `tool_mfa` (s
 Moodle has a built-in security audit at Site administration → Reports → Security checks. Equivalently from CLI:
 
 ```bash
-sudo -u www-data php admin/cli/checks.php --filter=security
+sudo -u www-data php admin/cli/checks.php --type=security
 ```
 
-This runs the `\core\check\security\*` checks. The output is a list of pass/warn/fail items; **fix every fail before opening the site.**
+`--type` picks the set of checks (`status`, the default, `security` or `performance`); `--filter=TEXT` only keeps the checks whose reference contains TEXT, so `--filter=security` would not run this set. The output is a list of pass/warn/fail items; **fix every fail before opening the site.**
+
+Two catches on 5.2 and 5.3 alike:
+
+- `checks.php --type=security` can stop with `Class "curl" not found` (the public-paths check uses Moodle's `curl` class without loading `lib/filelib.php`). That's an upstream bug, not the site: read the report in the web UI instead.
+- On a Clouve site, `core_publicpaths` is an ERROR that the site can't fix: it comes from the image's Apache setup. See [changes-in-5.3.md](changes-in-5.3.md#checks-that-fail-on-every-clouve-site).
+
+New in 5.3: "Security message notifications" (`core_securitymessages`) warns until the "New login" notification is enabled and locked for every enabled output. A new 5.3 site passes; a site upgraded from 5.2 keeps its old settings and warns. Fix it in Site administration → Messaging → Notification settings.
 
 ## Update notifications
 
@@ -164,7 +171,7 @@ This runs the `\core\check\security\*` checks. The output is a list of pass/warn
 
 ## Known CVEs and the moodle.org security advisory feed
 
-The Moodle Security Advisory feed: [https://moodle.org/security/](https://moodle.org/security/). Patches land in minor releases (5.2.1, 5.2.2, ...) — keeping current with the minor releases is the primary defence. The Magneto Moodle image rebuild cadence is the operator's responsibility; flag any CVE that Moodle marks as "Serious" so the user can plan a re-image.
+The Moodle Security Advisory feed: [https://moodle.org/security/](https://moodle.org/security/). Patches land in minor releases (5.3.1, 5.3.2, ...) — keeping current with the minor releases is the primary defence. The Clouve image pins one build, so a minor release reaches a site only with a new image. The Magneto Moodle image rebuild cadence is the operator's responsibility; flag any CVE that Moodle marks as "Serious" so the user can plan a re-image.
 
 ## What to do if you suspect a compromise
 

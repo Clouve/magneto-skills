@@ -1,6 +1,6 @@
 # Install & Bootstrap
 
-Moodle has two install paths: the interactive web UI ([public/install.php](https://github.com/moodle/moodle/blob/v5.2.0/public/install.php)), which is what you get when you visit a fresh site without a `config.php`, and the **non-interactive CLI** at [admin/cli/install_database.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/install_database.php). Containerized deploys MUST use the CLI path — it's idempotent (well, "fail-loud-when-already-installed", which is what you want), scriptable, and reads admin credentials from flags rather than form posts.
+Moodle has two install paths: the interactive web UI ([public/install.php](https://github.com/moodle/moodle/blob/v5.3.0/public/install.php)), which is what you get when you visit a fresh site without a `config.php`, and the **non-interactive CLI** at [admin/cli/install_database.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/install_database.php). Containerized deploys MUST use the CLI path — it's idempotent (well, "fail-loud-when-already-installed", which is what you want), scriptable, and reads admin credentials from flags rather than form posts.
 
 ## The "is it installed?" sentinel
 
@@ -27,7 +27,7 @@ The web installer collapses these into one wizard; the CLI splits them so each i
 
 ## CLI install signature
 
-From [admin/cli/install_database.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/install_database.php) `cli_get_params(...)`:
+From [admin/cli/install_database.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/install_database.php) `cli_get_params(...)`:
 
 | Flag | Default | Required? | Purpose |
 |---|---|---|---|
@@ -79,7 +79,7 @@ After a successful run:
 
 | Where | What |
 |---|---|
-| Database | All `mdl_*` tables defined in [public/lib/db/install.xml](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/db/install.xml) and per-plugin `db/install.xml`. Site-wide config rows in `mdl_config`. |
+| Database | All `mdl_*` tables defined in [public/lib/db/install.xml](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/db/install.xml) and per-plugin `db/install.xml`. Site-wide config rows in `mdl_config`. |
 | `mdl_user` | The admin user (id=2; id=1 is `guest`, id=0 is `nobody`). |
 | `mdl_role` | Default roles: manager, coursecreator, editingteacher, teacher, student, guest, user, frontpage. |
 | `mdl_course` | Site course (id=1). |

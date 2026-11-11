@@ -38,7 +38,7 @@ Order of likelihood:
 
 ## "I see 'rootdirpublic' error" / "Throw moodle_exception"
 
-The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public`. The root `index.php` is a [tripwire](https://github.com/moodle/moodle/blob/v5.2.0/index.php) that throws this exception specifically to catch this misconfiguration. Fix the webserver config.
+The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public`. The root `index.php` is a [tripwire](https://github.com/moodle/moodle/blob/v5.3.0/index.php) that throws this exception specifically to catch this misconfiguration. Fix the webserver config.
 
 ## "Some pages work, others 404"
 
@@ -151,7 +151,7 @@ The plugin's `db/install.xml` declares a column the existing schema doesn't have
 php admin/cli/check_database_schema.php
 ```
 
-[admin/cli/check_database_schema.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/check_database_schema.php) reports schema drift between the install.xml definitions and the live DB. If everything is clean and the install still fails, the plugin doesn't support 5.2 — check its `version.php` `$plugin->requires` value.
+[admin/cli/check_database_schema.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/check_database_schema.php) reports schema drift between the install.xml definitions and the live DB. If everything is clean and the install still fails, the plugin doesn't support this Moodle (5.3 on the Clouve image) — check its `version.php` values `$plugin->requires`, `$plugin->supported` and `$plugin->incompatible`.
 
 ## "Email isn't sending"
 
@@ -174,6 +174,16 @@ php admin/cli/check_database_schema.php
 | 3 | Look at browser devtools network tab — is the CSS URL returning 200 or 404? |
 | 4 | If 404 with path `theme/styles.php/...`, suspect `slasharguments` (see "Some pages work, others 404"). |
 | 5 | If 200 but wrong content, suspect themedesignermode being inadvertently on. Check `mdl_config WHERE name='themedesignermode'`. |
+
+## After the upgrade to 5.3
+
+| Symptom | First thing to check |
+|---|---|
+| The site still runs 5.2 on the 5.3 image: `public/version.php` says `2026042000`, and so does `/var/www/html/clouve/installed/version` | An added `report_aiusage` or `aiprovider_anthropic` newer than 5.3's own copy: the image leaves such a site on its old code. See [changes-in-5.3.md](changes-in-5.3.md#a-site-the-image-doesnt-upgrade). |
+| "Site is being upgraded, please retry later" | A start was cut off while Moodle upgraded. The next start clears Moodle's upgrade lock and runs the upgrade again; otherwise the lock expires within about five minutes. |
+| The site or a course looks different, or a block moved | The Classic theme is gone and Moodle moved the site to Boost. See [changes-in-5.3.md](changes-in-5.3.md#the-classic-theme-is-gone). |
+| A plugin's pages are gone | The image held the plugin back in `/var/www/html/clouve/upgrade-stash/<UTC time>/`. See [playbooks/install-plugin.md](../playbooks/install-plugin.md#putting-back-a-held-back-plugin). |
+| A new warning in the Security report, "Security message notifications" | New in 5.3 for upgraded sites. See [security.md](security.md#security-report). |
 
 ## "Magneto Agent can't reach the moodle container"
 

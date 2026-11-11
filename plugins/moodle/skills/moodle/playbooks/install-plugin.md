@@ -9,8 +9,10 @@ A plugin runs arbitrary PHP inside the Moodle container with full DB access and 
 In the Magneto-shipped Moodle pod, plugins installed at runtime live under `<dirroot>/public/local/`, `<dirroot>/public/mod/`, etc. on the persistent code volume (`/var/www/html`), so they survive pod restarts. When a new image brings a newer Moodle, the image's upgrade replaces the code tree and copies the plugins that admins added back into it. It holds a plugin back, and saves it in `/var/www/html/clouve/upgrade-stash/<UTC time>/` with the reason in the container log, when:
 
 - the new Moodle ships that plugin itself;
-- its `version.php` says it won't work with the new Moodle (an incompatible branch, or a dependency the new Moodle lacks);
-- Moodle's upgrade fails twice with the added plugins in place. All of them are then held back, and the upgrade runs once more without them. "Putting back a held-back plugin" below says how to restore one.
+- its `version.php` says it won't work with the new Moodle: an incompatible branch, a dependency the new Moodle lacks, or a `$plugin->supported` range that covered the old Moodle and stops before the new one (Moodle itself would only warn about that one). A plugin that already ran outside its `supported` range is kept, with a warning;
+- Moodle's upgrade fails twice with the added plugins in place. If the step it failed on was an added plugin, that plugin alone is held back and the upgrade runs again; otherwise all of them are held back, and the upgrade runs once more without them.
+
+"Putting back a held-back plugin" below says how to restore one. A theme based on the Classic theme is kept on 5.3 but can't load there, since 5.3 has no Classic: Moodle shows its default theme instead until the theme has a release for 5.3.
 
 This playbook covers the install on this site, and the request to Clouve ops for a plugin that every site should get from the image.
 
@@ -33,7 +35,9 @@ Before unzipping anything into `<dirroot>`:
    ```
    You're checking:
    - `$plugin->component` matches the directory and the user's claim.
-   - `$plugin->requires` is `>= 2024xx` (4.4 or later) or you'll get install-time failures on 5.2.
+   - `$plugin->requires` is at most this site's `$version` (`2026100500` on 5.3), or Moodle refuses the install.
+   - `$plugin->incompatible`, if set, is above this site's branch (`503` on 5.3). Moodle refuses a plugin marked incompatible with the running branch.
+   - `$plugin->supported`, if set, includes this site's branch (`[405, 503]` does, `[401, 502]` doesn't). Moodle installs a plugin outside that range with only a warning, but say so to the user: its author hasn't said it works on this Moodle, and it may break.
    - `$plugin->maturity = MATURITY_STABLE` (or at least RC). MATURITY_ALPHA is a no-go for production.
    - `$plugin->dependencies` lists what else needs to be installed first. If it depends on plugins you don't have, install those too — don't paper over with `$plugin->dependencies = []`.
 
@@ -77,7 +81,7 @@ For `auth_<name>`: `<dirroot>/public/auth/<name>/`
 For `enrol_<name>`: `<dirroot>/public/enrol/<name>/`
 For `theme_<name>`: `<dirroot>/public/theme/<name>/`
 
-Note the `public/` prefix — 5.2 puts plugin trees inside `public/`. The `<dirroot>/` path is the project root and lives outside webroot; the plugin code itself goes inside `public/`.
+Note the `public/` prefix — from Moodle 5.1 on (so on 5.2 and 5.3), plugin trees are inside `public/`. The `<dirroot>/` path is the project root and lives outside webroot; the plugin code itself goes inside `public/`.
 
 ```bash
 sshpass -e ssh clouve-ops@${MOODLE_HOST} bash <<'EOF'
@@ -132,9 +136,9 @@ This plugin is installed on this site's code volume, so it survives pod
 restarts. When a new image brings a newer Moodle, the upgrade carries it
 over to the new code. It is held back instead, and saved in
 /var/www/html/clouve/upgrade-stash/<UTC time>/, if the new Moodle ships
-it itself, if its version.php says it won't work with the new Moodle, or
-if Moodle's upgrade fails twice with it in place. The container log says
-why.
+it itself, if its version.php says it won't work with the new Moodle
+(its supported range included), or if Moodle's upgrade fails twice on
+it. The container log says why.
 To have it on every site, Clouve ops can add it to the Moodle image.
 ```
 
@@ -174,7 +178,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/uninstall_plugins.php --plugins=<frankenstyle> --run'
 ```
 
-[admin/cli/uninstall_plugins.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/uninstall_plugins.php) drops the plugin's tables, removes its `mdl_config_plugins` entries, and removes its files. **Take a backup first** — there's no undo.
+[admin/cli/uninstall_plugins.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/uninstall_plugins.php) drops the plugin's tables, removes its `mdl_config_plugins` entries, and removes its files. **Take a backup first** — there's no undo.
 
 The `--run` flag was historically required for the destructive action; without it the script lists what it WOULD do (dry run). Always do the dry run first:
 

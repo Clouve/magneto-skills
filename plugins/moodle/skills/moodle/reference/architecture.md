@@ -1,16 +1,16 @@
 # Architecture
 
-The single most load-bearing fact about Moodle 5.2: **the project root is no longer the webroot.** The webserver `DocumentRoot` must point to `<dirroot>/public/`. Operator-only artifacts (`config.php`, `admin/cli/`, build manifests) live outside it.
+The single most load-bearing fact about Moodle 5.2 and 5.3: **the project root is no longer the webroot.** The webserver `DocumentRoot` must point to `<dirroot>/public/`. Operator-only artifacts (`config.php`, `admin/cli/`, build manifests) live outside it.
 
 ## Top-level layout
 
 | Path | Type | Notes |
 |---|---|---|
-| `<dirroot>/index.php` | tripwire | [Source](https://github.com/moodle/moodle/blob/v5.2.0/index.php). Throws `moodle_exception('rootdirpublic', 'error')` if served by a webserver that mistakenly points at the root. |
+| `<dirroot>/index.php` | tripwire | [Source](https://github.com/moodle/moodle/blob/v5.3.0/index.php). Throws `moodle_exception('rootdirpublic', 'error')` if served by a webserver that mistakenly points at the root. |
 | `<dirroot>/config.php` | operator-edited | Created by the operator (or `install.php`). Holds DB creds, `wwwroot`, `dataroot`, MUC mappings. NEVER reachable via HTTP. |
-| `<dirroot>/config-dist.php` | template | [Source](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php). Reference template, copy + edit. |
-| `<dirroot>/admin/cli/` | CLI scripts | All maintenance entry points. Outside webroot — cannot be invoked over HTTP. See [admin/cli/](https://github.com/moodle/moodle/tree/v5.2.0/admin/cli). |
-| `<dirroot>/lib/setup.php` | shim | [Source](https://github.com/moodle/moodle/blob/v5.2.0/lib/setup.php). Migration helper that delegates to `public/lib/setup.php`. |
+| `<dirroot>/config-dist.php` | template | [Source](https://github.com/moodle/moodle/blob/v5.3.0/config-dist.php). Reference template, copy + edit. |
+| `<dirroot>/admin/cli/` | CLI scripts | All maintenance entry points. Outside webroot — cannot be invoked over HTTP. See [admin/cli/](https://github.com/moodle/moodle/tree/v5.3.0/admin/cli). |
+| `<dirroot>/lib/setup.php` | shim | [Source](https://github.com/moodle/moodle/blob/v5.3.0/lib/setup.php). Migration helper that delegates to `public/lib/setup.php`. |
 | `<dirroot>/composer.json`, `composer.lock` | build manifest | Out-of-webroot per security best practice. |
 | `<dirroot>/package.json`, `Gruntfile.js` | build manifest | Front-end build (Grunt + esbuild). |
 | `<dirroot>/UPGRADING.md` | docs | Per-component upgrade notes — the source of truth for breaking changes per release. |
@@ -39,7 +39,7 @@ public/
 ├── blocks/                  ← side-bar blocks
 ├── auth/                    ← authentication plugins (manual, db, ldap, oidc, oauth2, shibboleth, ...)
 ├── enrol/                   ← enrolment methods (manual, self, cohort, meta, lti, paypal, ...)
-├── theme/                   ← themes (boost is the default in 5.2)
+├── theme/                   ← themes (boost is the default; 5.3 removed classic)
 ├── local/                   ← site-local plugins (operator-installed)
 ├── repository/              ← file repositories (filesystem, equella, googledocs, onedrive, s3, ...)
 ├── filter/                  ← content filters (mathjaxloader, glossary, multilang, ...)
@@ -51,7 +51,7 @@ public/
 │   ├── locks/               ← lock providers (file)
 │   └── ...
 ├── webservice/              ← REST/SOAP/AJAX/Mobile web services
-├── ai/                      ← (5.2) AI provider abstractions
+├── ai/                      ← AI subsystem: providers and placements
 ├── communication/           ← (5.x) Communication providers (Matrix, BBB, ...)
 ├── h5p/                     ← H5P engine (vendored)
 └── ...
@@ -84,10 +84,10 @@ Moodle's plugin system is type-prefixed. Every plugin directory contains a `vers
 | `payment_*` | `payment/<name>/` | Payment gateway | |
 | `customfield_*` | `customfield/<name>/` | Custom field type | |
 | `mlbackend_*` | `lib/mlbackend/<name>/` | Analytics ML backend | |
-| `aiplacement_*`, `aiprovider_*` | `ai/<placement\|provider>/<name>/` | (5.2) AI providers and placements | |
+| `aiplacement_*`, `aiprovider_*` | `ai/<placement\|provider>/<name>/` | AI providers and placements (5.3 adds `aiprovider_anthropic`) | |
 | `communication_*` | `communication/<name>/` | (5.x) Communication providers | |
 
-For the full enumeration walk `ls public/` and `ls public/admin/tool/` against the v5.2.0 tree.
+For the full enumeration walk `ls public/` and `ls public/admin/tool/` against the v5.3.0 tree.
 
 ## Request lifecycle
 
@@ -97,30 +97,30 @@ For the full enumeration walk `ls public/` and `ls public/admin/tool/` against t
    ```php
    require_once(__DIR__ . '/../config.php');
    ```
-   Because `public/config.php` is a shim ([source](https://github.com/moodle/moodle/blob/v5.2.0/public/config.php)) that requires `../config.php`, this loads the OPERATOR-EDITED root `config.php`.
+   Because `public/config.php` is a shim ([source](https://github.com/moodle/moodle/blob/v5.3.0/public/config.php)) that requires `../config.php`, this loads the OPERATOR-EDITED root `config.php`.
 4. Root `config.php` sets `$CFG` properties (`dbtype`, `dbhost`, `dbname`, `dbuser`, `dbpass`, `prefix`, `wwwroot`, `dataroot`) and ends with:
    ```php
    require_once(__DIR__.'/lib/setup.php');
    ```
    This loads the root `lib/setup.php` shim, which requires `public/lib/setup.php` — the **real** Moodle bootstrap.
 5. **`public/lib/setup.php`** initialises the autoloader, opens the DB connection, loads the cache configuration, sets up sessions, restores the user session, and dispatches to the requested page.
-6. The page renders via the output renderer system ([public/lib/outputrenderers.php](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/outputrenderers.php)) and the active theme.
+6. The page renders via the output renderer system ([public/lib/outputrenderers.php](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/outputrenderers.php)) and the active theme.
 
 ## Core libraries
 
 | Path | What lives there |
 |---|---|
-| [public/lib/dml/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/dml) | Database abstraction. `$DB` is a `moodle_database` subclass; methods like `get_record`, `insert_record`, `update_record`, `delete_records` live here. **Always use `$DB`, never raw `mysqli_*`.** |
-| [public/lib/classes/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/classes) | PSR-4 autoloaded `\core\*` namespace — task manager, session, encryption, file storage, output, hooks, router, ... |
-| [public/lib/filestorage/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/filestorage) | File API. Files in Moodle are addressed by `(contextid, component, filearea, itemid, filepath, filename)`; the filesystem stores them by content hash. See [file-storage.md](file-storage.md). |
-| [public/lib/outputrenderers.php](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/outputrenderers.php) | Output system. Themes override renderers. |
-| [public/webservice/](https://github.com/moodle/moodle/tree/v5.2.0/public/webservice) | Web services framework (REST, SOAP, AJAX, Mobile). External API endpoints. |
-| [public/lib/externallib.php](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/externallib.php) | Base classes for external API functions. |
-| [public/lib/classes/session/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/classes/session) | Session manager + handlers (`file`, `database`, `redis`, `memcached`). |
+| [public/lib/dml/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/dml) | Database abstraction. `$DB` is a `moodle_database` subclass; methods like `get_record`, `insert_record`, `update_record`, `delete_records` live here. **Always use `$DB`, never raw `mysqli_*`.** |
+| [public/lib/classes/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/classes) | PSR-4 autoloaded `\core\*` namespace — task manager, session, encryption, file storage, output, hooks, router, ... |
+| [public/lib/filestorage/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/filestorage) | File API. Files in Moodle are addressed by `(contextid, component, filearea, itemid, filepath, filename)`; the filesystem stores them by content hash. See [file-storage.md](file-storage.md). |
+| [public/lib/outputrenderers.php](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/outputrenderers.php) | Output system. Themes override renderers. |
+| [public/webservice/](https://github.com/moodle/moodle/tree/v5.3.0/public/webservice) | Web services framework (REST, SOAP, AJAX, Mobile). External API endpoints. |
+| [public/lib/externallib.php](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/externallib.php) | Base classes for external API functions. |
+| [public/lib/classes/session/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/classes/session) | Session manager + handlers (`file`, `database`, `redis`, `memcached`). |
 
 ## Sessions
 
-Supported handlers in 5.2 (one file per handler under [public/lib/classes/session/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/classes/session)):
+Supported handlers in 5.2 and 5.3 (one file per handler under [public/lib/classes/session/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/classes/session)):
 
 | Handler | Class | When to pick |
 |---|---|---|

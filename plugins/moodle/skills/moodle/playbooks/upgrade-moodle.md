@@ -2,17 +2,20 @@
 
 Use this playbook whenever the tenant asks to upgrade Moodle to a newer version, or when diagnosing shows that `mdl_config(version)` is behind `public/version.php` (a pending migration).
 
+On Clouve, a newer Moodle comes with a newer image, and the image upgrades the site by itself at the first start of the container (see [reference/upgrade.md → The upgrade on Clouve](../reference/upgrade.md#the-upgrade-on-clouve)). Your part is everything around that start: the checks and the backup before it, and the checks after it. Step 6 then normally finds nothing to do.
+
 ## Preconditions
 
 - [ ] Backup taken within the last 24 hours, **and verified restorable** (or running [scripts/backup.sh](../scripts/backup.sh) right now). DB-only is not enough — `<dataroot>` must be in the same backup. See [reference/backup-restore.md](../reference/backup-restore.md).
 - [ ] Tenant has acknowledged the maintenance window. Upgrades block writes for the duration; schools usually do this overnight or on a weekend.
-- [ ] Release notes read. [https://github.com/moodle/moodle/blob/v\<target\>/UPGRADING.md](https://github.com/moodle/moodle/blob/v5.2.0/UPGRADING.md). Look for the `Removed` and `Changed` sections under `### core` and any plugin you have installed. Any `requires` floor changes? Cache store removals? Auth changes?
-- [ ] Source version satisfies the `requires` floor of the target. For 5.2: source must be **`>= 4.4`**. Check with:
+- [ ] Release notes read. [https://github.com/moodle/moodle/blob/v\<target\>/UPGRADING.md](https://github.com/moodle/moodle/blob/v5.3.0/UPGRADING.md). Look for the `Removed` and `Changed` sections under `### core` and any plugin you have installed. Any `requires` floor changes? Cache store removals? Auth changes?
+- [ ] Source version satisfies the `requires` floor of the target. For 5.2 and 5.3: source must be **`>= 4.4`**. Check with:
       ```sql
       SELECT value FROM mdl_config WHERE name = 'version';
       ```
-- [ ] PHP and DB versions on the target image satisfy the new minima — see [reference/changes-in-5.2.md](../reference/changes-in-5.2.md).
-- [ ] No MUC mappings reference removed cache stores (memcached, mongodb in 5.2). See same file.
+- [ ] PHP and DB versions on the target image satisfy the new minima — see [reference/changes-in-5.3.md](../reference/changes-in-5.3.md) (and [reference/changes-in-5.2.md](../reference/changes-in-5.2.md) for a site on 5.1 or older).
+- [ ] No MUC mappings reference removed cache stores (memcached and mongodb, gone since 5.2). See [reference/changes-in-5.2.md](../reference/changes-in-5.2.md).
+- [ ] For a move to 5.3, the three checks in [reference/changes-in-5.3.md → Before the upgrade](../reference/changes-in-5.3.md#before-the-upgrade) are done and their results told to the user: who uses the Classic theme, which added plugins 5.3 will hold back, and whether an added `report_aiusage` or `aiprovider_anthropic` will stop the upgrade.
 
 ## Steps
 
@@ -99,9 +102,18 @@ This step is outside Magneto Agent — the tenant clicks "Update" in the Clouve 
 
 > Trigger the app update from the Clouve marketplace. The `moodle` container will be recreated with the new code; your data volumes (`moodledata`, the DB volume) are preserved.
 
-Wait for the container to come back up. Confirm `curl -sI http://${MOODLE_HOST}/login/index.php` returns 200 (Moodle should be serving the "needs upgrade" page).
+Wait for the container to come back up. On the Clouve image the upgrade runs during that start, in maintenance mode and before Apache answers, so a big site can take several minutes. Then confirm the login page answers 200: `curl -sI -H "Host: ${MOODLE_URL#*://}" http://${MOODLE_HOST}/login/index.php` (Moodle answers any other host with a 303).
 
-### 6. Run the upgrade
+### 6. Run the upgrade (only if one is still pending)
+
+On the Clouve image, check first: the start in step 5 has normally run it already.
+
+```bash
+sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+    'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --is-pending; echo "exit: $?"'
+```
+
+Exit `0`: nothing pending, so go on to step 7. Exit `2`: the code is newer than the database, so run the upgrade:
 
 ```bash
 sshpass -e ssh clouve-ops@${MOODLE_HOST} \
@@ -190,10 +202,14 @@ Report:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `requires` not satisfied (e.g. source 4.3, target 5.2) | Skipping versions | Upgrade to 4.4 (or 4.5/5.0/5.1) first, then to 5.2 |
-| Plugin's `db/upgrade.php` errors | Plugin doesn't support the new version | Either fix the plugin, uninstall it via [admin/cli/uninstall_plugins.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/uninstall_plugins.php), or roll back |
+| `requires` not satisfied (e.g. source 4.3, target 5.3) | Skipping versions | Upgrade to 4.4 (or 4.5/5.0/5.1/5.2) first, then to 5.3 |
+| Plugin's `db/upgrade.php` errors | Plugin doesn't support the new version | Either fix the plugin, uninstall it via [admin/cli/uninstall_plugins.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/uninstall_plugins.php), or roll back |
 | MUC error after upgrade ("unable to load store memcached") | 5.2 dropped these stores | Edit `<cachedir>/config.php` to remove the mapping; purge caches |
 | Site loads but plugins missing settings UI | Stale MUC | `purge_caches.php` |
+| A plugin is gone after the image's upgrade | The image held it back in `/var/www/html/clouve/upgrade-stash/<UTC time>/` | See [install-plugin.md → Putting back a held-back plugin](install-plugin.md#putting-back-a-held-back-plugin) |
+| Still on the old version after the new image started (`public/version.php` and `/var/www/html/clouve/installed/version` unchanged) | The image found an added plugin that the new Moodle ships in an older version, and left the site on its old code | See [reference/changes-in-5.3.md → A site the image doesn't upgrade](../reference/changes-in-5.3.md#a-site-the-image-doesnt-upgrade) |
+| "Site is being upgraded, please retry later" | A start was cut off during Moodle's upgrade | The next start clears the lock and runs the upgrade again; otherwise wait about five minutes for the lock to expire |
+| Site looks different after 5.3 (theme, block layout) | The Classic theme is gone; Moodle moved the site to Boost | See [reference/changes-in-5.3.md → The Classic theme is gone](../reference/changes-in-5.3.md#the-classic-theme-is-gone) |
 | Site loads but theme is broken | Stale theme cache | `purge_caches.php --theme` and hard-reload browser |
 | `wwwroot` mismatch warnings | Underlying URL changed during deploy (HTTP→HTTPS, domain) | Update `wwwroot` env var, restart pod |
 | `Database connection failed` post-upgrade | DB password env not picked up by new image | Check DB env vars are still injected; restart pod if `config.php` regen happens at boot |

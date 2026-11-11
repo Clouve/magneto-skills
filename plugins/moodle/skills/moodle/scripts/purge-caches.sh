@@ -29,7 +29,7 @@ Usage: $(basename "$0") [--muc] [--theme] [--lang] [--js] [--filter] [--other]
 Without flags: purges everything. With one or more flags: targeted purge.
 
 See:
-  https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/purge_caches.php
+  https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/purge_caches.php
 EOF
 }
 
@@ -54,7 +54,7 @@ for arg in "$@"; do
     esac
 done
 
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no -o ConnectTimeout=10)
+ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=10)
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Purging caches on ${MOODLE_HOST}${flags[*]:+ }${flags[*]:-(all)}..." >&2
 
 if ! SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh "${ssh_opts[@]}" \

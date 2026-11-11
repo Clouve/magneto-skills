@@ -1,6 +1,6 @@
 # Performance
 
-Tuning a Moodle 5.2 instance, in the order of leverage.
+Tuning a Moodle 5.2 or 5.3 instance, in the order of leverage.
 
 ## 1. OPcache (mandatory)
 
@@ -141,5 +141,5 @@ For deeper analysis, use a PHP profiler (XHProf or Tideways) — Moodle has a bu
 - **`$CFG->cachejs = false`** does not "improve perf for users" — it dramatically slows the site by forcing JS bundle rebuilds.
 - **`opcache.revalidate_freq`** has no effect when `validate_timestamps = 0`.
 - **Disabling cron** "to reduce load" breaks emails, course completion, scheduled backups, and analytics.
-- **Memcached** — gone as a cache store in 5.2; use Redis.
+- **Memcached** — gone as a cache store since 5.2; use Redis.
 - **Increasing `memory_limit` to 4G** rarely helps; if PHP needs >512MB for a page render, there's a code-level problem (a runaway loop or a query returning millions of rows).

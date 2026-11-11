@@ -51,7 +51,7 @@ esac
 : "${MOODLE_HOST:?MOODLE_HOST not set}"
 : "${CLOUVE_OPS_PASSWORD:?CLOUVE_OPS_PASSWORD not set}"
 
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no -o ConnectTimeout=10)
+ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=10)
 moodle_cli() {
     SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh "${ssh_opts[@]}" \
         "clouve-ops@${MOODLE_HOST}" \

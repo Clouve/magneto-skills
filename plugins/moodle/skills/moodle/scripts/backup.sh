@@ -150,7 +150,7 @@ log "DB dump complete: ${db_size} bytes"
 data_file="${out_dir}/moodledata.tar.gz"
 log "Archiving ${MOODLE_DATAROOT} via SSH to ${MOODLE_HOST} → ${data_file}"
 export SSHPASS="${CLOUVE_OPS_PASSWORD}"
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no)
+ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no)
 if ! sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" "
     sudo tar -C \"$(dirname "${MOODLE_DATAROOT}")\" \
         --exclude='$(basename "${MOODLE_DATAROOT}")/temp/*' \

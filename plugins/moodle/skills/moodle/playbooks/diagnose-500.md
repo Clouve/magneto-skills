@@ -171,7 +171,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
 
 (Note: this is `<cachedir>/config.php`, NOT `<dirroot>/config.php` — different file, same name.)
 
-If you see `cachestore_memcached` or `cachestore_mongodb` mappings on a 5.2 site, those stores are gone. Either:
+If you see `cachestore_memcached` or `cachestore_mongodb` mappings on a 5.2 or 5.3 site, those stores are gone. Either:
 1. Edit Moodle's MUC config in the admin UI: Site administration → Plugins → Caching → Configuration → remove the bad mapping, switch to `redis` or `file`.
 2. Or fix it via the cache config file: edit `<cachedir>/config.php` to remove the bad blocks, then `purge_caches.php`.
 

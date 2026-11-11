@@ -37,7 +37,7 @@ The right pattern for end-of-term in most schools is **archive + rollover**:
 
 UI bulk path: Site administration → Courses → Manage courses and categories → select category → bulk select → "Hide".
 
-CLI path (uses [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/maintenance.php) is NOT what you want; there's no shipped bulk-visibility CLI):
+CLI path (uses [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/maintenance.php) is NOT what you want; there's no shipped bulk-visibility CLI):
 
 ```sql
 -- DRY RUN: count first
@@ -83,7 +83,7 @@ This is per-course. For dozens of courses, plan a maintenance window of an eveni
 
 Default: **course content without user data.** That means activities, resources, settings, but NOT enrolments, submissions, posts, grades, attempts.
 
-The course backup wizard's "Include users" toggle controls this. From CLI, [admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/backup.php) — read its `--help` to see the user-inclusion flags.
+The course backup wizard's "Include users" toggle controls this. From CLI, [admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/backup.php) — read its `--help` to see the user-inclusion flags.
 
 ### 6. Back up each source course
 
@@ -124,7 +124,7 @@ The restored courses get fresh IDs, fresh `mdl_course.startdate` / `enddate` (yo
 
 This part depends on how the school manages enrolments:
 
-- **Manual enrolment (small school):** Use the UI per-course or via [enrol/manual/cli/](https://github.com/moodle/moodle/tree/v5.2.0/public/enrol/manual/cli).
+- **Manual enrolment (small school):** Use the UI per-course or via [enrol/manual/cli/](https://github.com/moodle/moodle/tree/v5.3.0/public/enrol/manual/cli).
 - **Cohort sync:** Update the cohort definition for the new term; cohort sync (cron task) populates the courses automatically.
 - **External SSO with role-mapping:** The next IdP login provisions the teacher with the right role; nothing to do.
 
