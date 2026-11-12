@@ -2,7 +2,7 @@
 name: moodle
 description: Safely operate a Moodle 5.3.x (or 5.2.x) LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions "Moodle", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.
 type: devops
-version: 0.1.8
+version: 0.1.9
 authoredAgainst: moodle v5.3.0
 ---
 
@@ -25,7 +25,7 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 
 1. **A Moodle backup is *both* the SQL dump *and* `moodledata/`.** The DB references files on disk by hash; one without the other is incomplete and silent — the site will load but uploads, draft submissions, and cached content will 404. Use [scripts/backup.sh](scripts/backup.sh); see [reference/backup-restore.md](reference/backup-restore.md) for the verified shape of a complete backup.
 2. **Never run schema-changing CLI scripts from the web user without taking a backup first.** `admin/cli/upgrade.php`, `admin/cli/install_database.php`, `admin/cli/uninstall_plugins.php`, and any `*_collation.php` / `*_compressed_rows.php` script changes data in ways the file API and MUC will not silently recover from.
-3. **Edit `config.php` only with a diff shown to the user, and only with explicit `yes`.** It encodes the DB credentials, `wwwroot`, `dataroot`, `cachedir`, `localcachedir`, `sslproxy`/`reverseproxy` flags, MUC mappings, and session handler — every one of which can take the site offline. Prefer the env-var-driven config pattern (see [reference/configuration.md](reference/configuration.md)) over hand-edits.
+3. **Edit `config.php` only after showing the user the lines you change, with the database password masked (never a diff or a print of the file), and only with explicit `yes`.** It encodes the DB credentials, `wwwroot`, `dataroot`, `cachedir`, `localcachedir`, `sslproxy`/`reverseproxy` flags, MUC mappings, and session handler — every one of which can take the site offline. The image writes the database and `wwwroot` lines from the deployment's settings at every start, so don't edit those by hand: rotating the database password is a Clouve support request ([reference/configuration.md](reference/configuration.md)).
 4. **Dry-run first, then execute.** For any multi-row `UPDATE`/`DELETE`, run the equivalent `SELECT COUNT(*)` first and report the row count back to the user. Only proceed after they confirm with the literal phrase `yes, I understand this is irreversible` (or equivalent unambiguous ack).
 5. **Use Moodle's CLI scripts before raw SQL.** [admin/cli/upgrade.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/upgrade.php), [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/maintenance.php), [admin/cli/purge_caches.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/purge_caches.php), [admin/cli/uninstall_plugins.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/uninstall_plugins.php), [admin/cli/cron.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/cron.php), [admin/cli/reset_password.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/reset_password.php) all exist for a reason — they keep the DB and `moodledata/` consistent in ways hand-written queries do not. Destructive actions go through [scripts/](scripts/) wrappers around them.
 6. **Treat the gradebook as sacred.** Never edit `mdl_grade_*`, `mdl_quiz_attempts`, `mdl_assign_submission`, `mdl_forum_posts`, or `mdl_logstore_*` directly. Go through Moodle's gradebook UI, the Quiz reports, or the relevant `mod_*` API. The never-touch list is in [reference/data-model.md](reference/data-model.md).
@@ -34,14 +34,14 @@ Use this skill when the user is working with the Clouve Moodle app, when they me
 9. **Caches are global and stale-by-default after schema or `config.php` changes.** After ANY upgrade, plugin install/uninstall, or `config.php` edit, run [scripts/purge-caches.sh](scripts/purge-caches.sh) — otherwise users see stale strings, broken navigation, or silently-disabled features.
 10. **Never expose the AI Assistant's access key.** Clouve manages it, one key per deployment. It is in the environment as `MAGNETO_AGENT_LLM_KEY` and in your session as `ANTHROPIC_AUTH_TOKEN`. Never print it, never copy it to another path, never send it anywhere. Clouve rotates it; you never replace it.
 11. **Clouve doesn't see the inside of this container.** If you can't diagnose something, surface enough detail in chat that the user can file a support ticket — do not "fix it quietly."
-12. **Set a password for a user synced from Gibbon (`auth = 'db'`) with Moodle's API, and clear `create_password`.** `admin/cli/reset_password.php` only finds `auth = 'manual'` accounts. The External Database sync tags every user it creates with the `create_password` preference, and Moodle's "Send new user passwords" task replaces that user's password with a random one at its next run (every five minutes here) and emails it. So after `update_internal_user_password()`, call `unset_user_preference('create_password', $user)`, or the password you hand over stops working within five minutes. → [playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md).
+12. **Set a user's password with [scripts/temp-password.sh](scripts/temp-password.sh), which clears `create_password` for a user synced from Gibbon (`auth = 'db'`).** `admin/cli/reset_password.php` only finds `auth = 'manual'` accounts. The External Database sync tags every user it creates with the `create_password` preference, and Moodle's "Send new user passwords" task replaces that user's password with a random one at its next run (every five minutes here) and emails it. So after `update_internal_user_password()`, call `unset_user_preference('create_password', $user)`, or the password you hand over stops working within five minutes. → [playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md).
 
 ## Environment you are running in
 
 - You are inside the Magneto Agent container in the app's pod.
 - Moodle is reachable at the pod-internal hostname `moodle` on port 80. The Moodle DB is at `moodle-mysql:3306` (the Magneto-shipped image uses MySQL 8.4; Moodle 5.3 also supports MariaDB ≥11.4 and PostgreSQL ≥17 — see [reference/stack-and-runtime.md](reference/stack-and-runtime.md)). Both are rendered into env vars injected by the app — use `${MOODLE_HOST}` / `${MOODLE_DB_HOST}` rather than hard-coding names. Confirm the actual var names with `compgen -e | grep -i moodle` (names only), and the passwords' names with `clv-secret --list | grep -i moodle`, before relying on any specific one.
 - Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.
-- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`; connect with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
+- You **do** have an interactive shell in both side containers via SSH as the `clouve-ops` operator account (passwordless sudo). The credential is the per-pod password, `CLOUVE_OPS_PASSWORD`; connect with `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST}` (or `@${MOODLE_DB_HOST}`). See [reference/shell-access.md](reference/shell-access.md) for when to use SSH vs. the TCP `mysql`/`curl` channels and the safety gates that apply over the SSH hop.
 
 ## What changed in 5.3 (the things that bite operators)
 
@@ -135,16 +135,16 @@ The gates are the reason this skill exists. If any of these are skipped, assume 
 |---|---|
 | Any multi-row `UPDATE`/`DELETE` on `mdl_*` | `SELECT COUNT(*)` first + user ack |
 | Schema change (`ALTER`, `CREATE`, `DROP`, `TRUNCATE`) | Full DB dump **and** `moodledata/` archive first, then user ack |
-| Edit to `config.php` | Show diff + user ack; prefer env-var-driven path |
+| Edit to `config.php` | Show the lines you change, with the database password masked (never a diff or a print of the file) + user ack; never the database or `wwwroot` lines (the image rewrites them at every start) |
 | Install a plugin | `version.php` + `db/install.xml` + `db/upgrade.php` + `lib.php` read; trusted source verified; user ack |
 | Delete files outside `$CFG->tempdir` or `$CFG->localcachedir` | User ack |
 | Upgrade Moodle version | Backup taken first + `mdl_config(version)` matches `public/version.php` + `requires` value satisfied + user ack |
 | Run `admin/cli/upgrade.php --non-interactive --allow-unstable` | Backup + maintenance mode on + user ack |
 | Toggle `$CFG->maintenance_enabled` directly | Refuse — use [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/maintenance.php) |
 | Run `admin/cli/uninstall_plugins.php` | Backup + the plugin's `db/uninstall.php` reviewed + user ack |
-| Run `admin/cli/reset_password.php` | Confirm the username and the user is contactable; never reset the primary admin without user ack |
+| Set or reset a user's password | Only through [scripts/temp-password.sh](scripts/temp-password.sh), which keeps the password out of the chat and off every command line ([playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md)); confirm the username and that the user is contactable; never the primary admin without user ack |
 | Run `admin/cli/kill_all_sessions.php --run` | Without `--run` it is a dry run (the default since 5.2); with `--run`, confirm the target scope and user ack |
-| Rotate DB credentials | Use container env vars, not hand-edit `config.php` — restart pod to apply |
+| Rotate DB credentials | Not from here, and the customer has no control for it: Clouve support. Never `ALTER USER` the database user or edit `$CFG->dbpass` (the next start writes the deployment's password back into `config.php`) |
 | Bulk delete users / courses | Use Moodle's UI bulk actions or a course backup first; never via raw SQL on `mdl_user` / `mdl_course` |
 
 "User ack" means: you print the exact command/SQL you are about to run, and wait for the user to reply affirmatively before executing. Do not infer consent from an earlier "go ahead."

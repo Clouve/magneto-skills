@@ -40,10 +40,11 @@ SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e s
 
 Pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`
 on every connection, as every command in this skill does. The two options
-take the key the container shows and save nothing. The containers' host
-keys change: the gibbon image's whenever it is rebuilt, and gibbon-mysql
-makes its own when its container starts. A key saved earlier is then wrong,
-and ssh refuses it ("REMOTE HOST IDENTIFICATION HAS CHANGED").
+take the key the container shows and save nothing. From the 4.5.5 images
+on, both containers make new host keys at every start; before that, the
+gibbon image's keys changed when it was rebuilt, and gibbon-mysql made its
+own at each start. A key saved earlier is then wrong, and ssh refuses it
+("REMOTE HOST IDENTIFICATION HAS CHANGED").
 
 Newer agents' own SSH settings keep no key for the app's containers either.
 Older agents have no such settings, so there a command without the options
@@ -64,7 +65,7 @@ call. That list is `/dev/null`, so nothing is kept.
 | Run `php /var/www/html/cli/foo.php` (Gibbon CLI scripts) | **SSH into gibbon**, then `sudo php …` |
 | `sudo apachectl reload` | **SSH into gibbon** |
 | Inspect or edit `/etc/mysql/conf.d/*.cnf` | **SSH into gibbon-mysql**, then `sudo nano` |
-| Restart `mysqld` (rare; usually pod restart is the right move) | **SSH into gibbon-mysql**, then `sudo systemctl restart mysqld` (if systemd present) or signal the process |
+| Restart `mysqld` | Don't, as a rule. The image has no systemd, and stopping `mysqld` stops the gibbon-mysql container, so Gibbon has no database until it's back. If it's really needed, gate it (user ack), or leave it to Clouve support |
 | Inspect filesystem under `/var/www/html` | **SSH into gibbon** — there is no shared filesystem mount |
 
 ## The Apache error log
@@ -89,8 +90,8 @@ commands over SSH as when you're running locally. Specifically:
   explicit user ack.
 - **Edit `config.php` over SSH only after you've shown the lines you
   change, with the database password masked, and got an ack** (never a
-  diff or a print of the file); otherwise prefer the env-driven sync path
-  that runs at container restart.
+  diff or a print of the file). Leave the four database lines alone: the
+  image writes them from the deployment's settings at every start.
 - **Never echo, copy, or transmit `CLOUVE_OPS_PASSWORD`** — same
   rule as for the AI Assistant's access key. Use `sshpass -e` (which reads it
   from the env via `SSHPASS`) rather than passing the value on a

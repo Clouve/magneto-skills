@@ -26,7 +26,7 @@ MYSQL_PWD="${GIBBON_DB_PASSWORD:-$(clv-secret GIBBON_DB_PASSWORD)}" mysqladmin -
 # If it fails: gibbon-mysql container is down, or DB_PASSWORD env is wrong.
 ```
 
-If DB is down → escalate to ops. If creds are wrong → [rotate-admin-credentials.md](rotate-admin-credentials.md) path 2.
+If DB is down → escalate to ops. If the password stopped matching, that is Clouve support's to fix too ([rotate-admin-credentials.md](rotate-admin-credentials.md), section 2).
 
 ## Step 3 — version mismatch?
 

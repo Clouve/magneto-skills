@@ -30,13 +30,13 @@ For example, to install the Gibbon skill:
 
 | Plugin | Category | Version | Description |
 | --- | --- | --- | --- |
-| `ai-studio` | DevOps | 0.2.3 | Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — install software, write code, run supervised services, debug, and verify. |
-| `gibbon` | DevOps | 0.1.4 | Safely operate a Gibbon (gibbonedu) school-management install — upgrades, module installs, backups/restores, year rollover, hardening, diagnosing 500s. |
+| `ai-studio` | DevOps | 0.2.4 | Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — install software, write code, run supervised services, debug, and verify. |
+| `gibbon` | DevOps | 0.1.5 | Safely operate a Gibbon (gibbonedu) school-management install — upgrades, module installs, backups/restores, year rollover, hardening, diagnosing 500s. |
 | `mern` | DevOps | 0.2.0 | Build, run, and operate MERN-stack apps (MongoDB, Express, React, Node) on a Debian/Ubuntu Linux system. |
-| `moodle` | DevOps | 0.1.8 | Safely operate a Moodle 5.3.x (or 5.2.x) LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
-| `nextcloud` | DevOps | 0.1.0 | Safely run a Nextcloud 35 file sync and share server on Clouve: accounts and groups, Team folders, sharing, apps, email setup, backups and restores, health checks and troubleshooting. |
-| `odoo` | DevOps | 0.1.4 | Safely operate an Odoo 19.0 ERP install — module installs/upgrades, filestore-aware backups/restores, prod→staging neutralization, database-manager hardening, diagnosing module failures. |
-| `wordpress` | DevOps | 0.1.7 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
+| `moodle` | DevOps | 0.1.9 | Safely operate a Moodle 5.3.x (or 5.2.x) LMS install — upgrades, plugin installs, cron, MUC purge, backups/restores, maintenance mode, hardening, diagnosing 500s. |
+| `nextcloud` | DevOps | 0.1.1 | Safely run a Nextcloud 35 file sync and share server on Clouve: accounts and groups, Team folders, sharing, apps, email setup, backups and restores, health checks and troubleshooting. |
+| `odoo` | DevOps | 0.1.5 | Safely operate an Odoo 19.0 ERP install — module installs/upgrades, filestore-aware backups/restores, prod→staging neutralization, database-manager hardening, diagnosing module failures. |
+| `wordpress` | DevOps | 0.1.8 | Safely operate a WordPress site deployed on Clouve — backups/restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, diagnosing WSODs/500s. |
 
 ## On-disk layout
 

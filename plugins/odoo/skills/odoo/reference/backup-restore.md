@@ -89,6 +89,11 @@ ODOO_RC=/etc/odoo/odoo.conf odoo db load --move <dbname> /tmp/<dbname>.zip
 ODOO_RC=/etc/odoo/odoo.conf odoo db load -f <dbname> /tmp/<dbname>.zip
 ```
 
+On Clouve, every database the `odoo` role owns runs its scheduled jobs (Odoo's cron thread lists them all;
+`dbfilter` limits only the browser), and XML-RPC and JSON-RPC reach any of them by name. So a load or a duplicate
+under another name than `${ODOO_DB_NAME}` takes `-n`, and the copy is dropped once its task is done
+([playbooks/restore-and-clone.md](../playbooks/restore-and-clone.md)).
+
 **Flag semantics:**
 - Default (no `--move`): a new `dbuuid` is generated (the copy/restore-as-copy path).
 - `--move`: keeps the original dbuuid (treat as a moved DB, not a clone).
@@ -119,6 +124,8 @@ Both the DB and the filestore files are permanently removed.
 
 The HTTP routes (`addons/web/controllers/database.py`) require:
 - `list_db=True` in the Odoo config (the routes are blocked by `check_db_management_enabled`).
+  Clouve's Odoo image writes `list_db = False` at every start, so these routes are locked
+  there: use `odoo db`, which works with the lock on.
 - `master_pwd` (the admin password) passed in every POST body.
 
 They call the same `dump_db()` / `restore_db()` functions as the CLI but without the

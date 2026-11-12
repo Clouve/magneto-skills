@@ -122,10 +122,12 @@ fi
 # ($CFG->version would be the database's version, which step 2 already read.)
 # The commands go to `bash -s` on stdin, so the remote shell expands nothing.
 # The Moodle image makes a new SSH host key at every container start, so ssh
-# saves no key (UserKnownHostsFile=/dev/null) and takes the one it is shown.
+# saves no key (UserKnownHostsFile=/dev/null) and takes the one it is shown. Both
+# host-key options are written out on each ssh line, where
+# tests/lib/ssh-host-key-check.py reads them.
 export SSHPASS="${CLOUVE_OPS_PASSWORD}"
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=10)
-code_version=$(sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" 'bash -s' 2>/dev/null <<'REMOTE' || true
+ssh_opts=(-o BatchMode=no -o ConnectTimeout=10)
+code_version=$(sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" 'bash -s' 2>/dev/null <<'REMOTE' || true
 for vf in /var/www/html/public/version.php /var/www/html/version.php; do
     if sudo -n -u www-data test -f "$vf"; then
         sudo -n -u www-data sed -nE 's/^[[:space:]]*\$version[[:space:]]*=[[:space:]]*([0-9]+(\.[0-9]+)?).*/\1/p' "$vf" | head -n 1
@@ -221,7 +223,7 @@ fi
 # --- 7. Moodle's own checks framework (via SSH)
 export SSHPASS="${CLOUVE_OPS_PASSWORD}"
 checks_rc=0
-sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" \
+sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php --filter=status' \
     > /tmp/moodle-checks.out 2> /tmp/moodle-checks.err || checks_rc=$?
 unset SSHPASS

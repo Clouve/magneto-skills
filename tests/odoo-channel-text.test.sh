@@ -25,9 +25,30 @@
 # entrypoint or Odoo itself, and not when PID 1 is tini running PostgreSQL. SKILL.md, reference/stack-and-runtime.md
 # and playbooks/install-or-upgrade-module.md each give the command. The test never runs a kill.
 #
-# Odoo's command line holds the database password (the entrypoint passes --db_password), so the skill never gives a
-# command that prints a process's arguments: `ps aux`, `ps -ef`, `pgrep -a`, or a cat of a /proc/*/cmdline file, in a
-# code block, a script, or backticks on a prose line that doesn't say never or don't.
+# Odoo images built before 2026-11-03 put the database password on Odoo's command line (their entrypoint passed
+# --db_password), and the assistant can meet one, so the skill never gives a command that prints a process's
+# arguments: `ps aux`, `ps -ef`, `pgrep -a`, or a cat of a /proc/*/cmdline file, in a code block, a script, or
+# backticks on a prose line that doesn't say never or don't. Since 2026-11-03 Odoo runs as the odoo user, reads that
+# password from odoo.conf only, and the clouve-ops sshd's parent is tini, not Odoo: a line that says sshd is Odoo's,
+# or that Odoo's command line holds the password with no image date, is stale.
+#
+# odoo.conf holds db_password and admin_passwd in plain text, so the skill never shows a diff of it, and a setting
+# that comes from the container's environment can't be changed from the agent: no line offers an env-driven path, a
+# config map or a Clouve control for it (the same rotation pattern as the gibbon and moodle tests).
+#
+# The database manager: the Odoo image writes list_db = False and a dbfilter for the deployment's database into
+# odoo.conf at every start. Nothing reads an ODOO_LIST_DB variable, and a POST with a made-up master password can't
+# tell a locked manager from an open one (Odoo checks the password first), so neither appears. The harden playbook
+# opens the manager for one task with sed and the restart command, checks it with /web/database/list, and closes it
+# the same way; restore-and-clone.md says a clone under another name doesn't answer in a browser. The open step waits
+# for the database list to change, not for /web/health, which the old process can still answer.
+#
+# A copy under another name: Odoo 19's cron thread serves every database the odoo role owns (cron_database_list:
+# config['db_name'] or list_dbs(True)), dbfilter or not, and XML-RPC and JSON-RPC reach any database by name. So a
+# copy's scheduled jobs (mail, payments) run unless it is neutralized, and its users can sign in to it over the API.
+# Every `odoo db load` or `odoo db duplicate` in a playbook neutralizes (-n) or loads into ${ODOO_DB_NAME} itself,
+# and restore-and-clone.md says why and to drop a copy when its task is done. A backups folder in the agent holds
+# whole databases, so it is made mode 700.
 #
 # A new master password is never typed into a command (no exp_change_admin_password('...')): the tenant sets it on
 # Odoo's own database manager page.
@@ -216,6 +237,83 @@ if [ -z "$typed" ] && grep -qF 'Set Master Password' "$SKILL_DIR/playbooks/harde
 else
   fail "no command types a new master password; harden-db-manager.md sends the tenant to Odoo's own Set Master Password"
   printf '%s\n' "$typed" | sed "s#^$ROOT/##; /^$/d; s/^/       /" | cut -c1-220
+fi
+
+# --- The non-root image (2026-11-03) ---------------------------------------------------------
+
+stale "that sshd is Odoo's child" "sshd.{0,3} is odoo.s\\b|odoo.s child[^.]*sshd"
+stale "that Odoo's command line holds the database password, with no image date" \
+  "odoo.s command line holds the database password|entrypoint passes .?--db_password"
+
+# --- odoo.conf's passwords and settings that come from the environment ---------------------------
+
+stale 'a diff of odoo.conf (it holds both passwords)' 'show(ing)? (a |the )?diff'
+stale 'an env-driven path, a config map or a Clouve control for a setting' \
+  'prefer (the |that )?env[- ]|env(-var)?-driven (sync |config )?(path|pattern)|via env vars|env injection on pod restart|rotate the secret|rotated clouve secret|via a kubernetes secret|clouve platform ui|config ?map|environment variable override'
+
+# --- The database manager ----------------------------------------------------------------------
+
+stale 'ODOO_LIST_DB (nothing reads it)' 'ODOO_LIST_DB'
+stale 'a lockdown probe with a made-up master password' 'master_pwd=test'
+
+harden="$SKILL_DIR/playbooks/harden-db-manager.md"
+missing=""
+for want in "sudo sed -i 's/^list_db = False\$/list_db = True/' /etc/odoo/odoo.conf" \
+            "sudo sed -i 's/^list_db = True\$/list_db = False/' /etc/odoo/odoo.conf" \
+            "grep -q odoo /proc/1/cmdline && sudo kill -HUP 1" \
+            "/web/database/list" \
+            "--data-urlencode master_pwd@-"; do
+  grep -qF -- "$want" "$harden" || missing="${missing}       ${want}"$'\n'
+done
+if [ -z "$missing" ]; then
+  pass "harden-db-manager.md opens the manager for one task, checks it with /web/database/list and closes it"
+else
+  fail "harden-db-manager.md opens the manager for one task, checks it with /web/database/list and closes it"
+  printf 'missing:\n%s' "$missing"
+fi
+
+if grep -qF 'answers in a browser' "$SKILL_DIR/playbooks/restore-and-clone.md"; then
+  pass "restore-and-clone.md says which database answers in a browser"
+else
+  fail "restore-and-clone.md says which database answers in a browser"
+fi
+
+# --- Copies under another name, and the open step's wait ---------------------------------------
+
+copies="$(python3 -I - "$SKILL_DIR" <<'PY2'
+import pathlib, re, sys
+skill = pathlib.Path(sys.argv[1])
+load = re.compile(r"\bodoo db (load|duplicate)\b")
+for path in sorted((skill / "playbooks").glob("*.md")):
+    fence = False
+    for n, line in enumerate(path.read_text().splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+            continue
+        if not fence or not load.search(line):
+            continue
+        ok = re.search(r"\s(-n|--neutralize)\b", line) or "${ODOO_DB_NAME}" in line
+        print(("ok " if ok else "bad ") + "playbooks/%s:%d: %s" % (path.name, n, line.strip()[:140]))
+PY2
+)"
+report "every odoo db load or duplicate in a playbook neutralizes (-n) or loads into \${ODOO_DB_NAME}" "$copies"
+
+rc="$SKILL_DIR/playbooks/restore-and-clone.md"
+missing=""
+for want in 'scheduled jobs' 'XML-RPC' 'odoo db drop'; do grep -qF -- "$want" "$rc" || missing="$missing '$want'"; done
+if [ -z "$missing" ]; then
+  pass "restore-and-clone.md says a copy's scheduled jobs and API stay live, and to drop it when done"
+else
+  fail "restore-and-clone.md says a copy's scheduled jobs and API stay live, and to drop it when done"
+  echo "       missing:$missing"
+fi
+
+# shellcheck disable=SC2016  # a literal: the text no file may hold
+stale 'a backups folder in the agent made with the default mode' 'mkdir -p "\$HOME/backups"'
+if grep -qE 'curl[^#]*web/health' "$SKILL_DIR/playbooks/harden-db-manager.md"; then
+  fail "the open step waits for the database list to change, not for /web/health"
+else
+  pass "the open step waits for the database list to change, not for /web/health"
 fi
 
 echo

@@ -21,7 +21,7 @@ Full tree in [stack-and-runtime.md](stack-and-runtime.md). The operationally loa
 
 | Path | What it is | Reachable via |
 |---|---|---|
-| `/var/www/html/wp-config.php` | DB creds, salts, `WP_*` flags | The shell only (Shape A), under the wp-config gate — and prefer the env-driven path there ([configuration.md](configuration.md)) |
+| `/var/www/html/wp-config.php` | DB creds, salts, `WP_*` flags | The shell only (Shape A), under the wp-config gate; a setting that comes from the container's environment is a Clouve support request ([configuration.md](configuration.md)) |
 | `wp-content/plugins/`, `themes/` | Code on disk; the DB only holds *which* are active | The shell and wp-cli (Shape A); [HTTP] existence probes; install/manage via `/wp-admin` |
 | `wp-content/uploads/` | Media; DB references it by URL/path | [HTTP]; Shape A re-chowns it every boot |
 | `wp-content/debug.log` | PHP error log when `WP_DEBUG_LOG` is on | Enabling needs the shell (Shape A); reading is [HTTP]-fetchable when the file exists — it sits in the docroot ([diagnose-500 playbook](../playbooks/diagnose-500.md)) |

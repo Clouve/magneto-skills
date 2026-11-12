@@ -6,7 +6,7 @@ Failure modes seen in the wild and the **first** thing to check for each. Stop a
 
 Order of likelihood:
 
-1. **PHP error log first.** `tail -100 /var/log/apache2/error.log`. The fatal will name a file and a line. Most production 500s map to:
+1. **What the error says.** Apache's error log, where PHP's fatals go, is the container's own output on the Clouve image, and nothing in the pod can read it ([shell-access.md](shell-access.md#the-apache-error-log)). Ask for the exact error text, and follow [playbooks/diagnose-500.md](../playbooks/diagnose-500.md) step 1. The fatal names a file and a line. Most production 500s map to:
    - Recent code change with a syntax error → revert the deploy.
    - DB connection error → check the DB process, network, credentials.
    - File-permission error → `<dataroot>` not writable by `www-data`.
@@ -73,7 +73,7 @@ If that's old:
 
 1. **Is cron disabled?** `mdl_config WHERE name='cron_enabled'` (1 = on).
 2. **Is the cron process actually running on the host?**
-   - SSH to the moodle container: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}`
+   - SSH to the moodle container: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST}`
    - `ps aux | grep cron.php`
    - `cat /etc/cron.d/moodle` or check k8s `CronJob`.
 3. **Is the cron process running but stuck?**
@@ -196,4 +196,4 @@ Out of skill scope — that's a Clouve platform / pod networking issue, not a Mo
 - Anything where the diagnosis points outside the moodle / moodle-mysql containers (cluster networking, ingress, cert-manager, namespace policies).
 - Any data loss scenario where a forensic snapshot is needed of state outside `<dataroot>` and the DB.
 
-Surface enough detail in chat that the user can paste it into a support ticket — version, release, error message, last 50 lines of the PHP error log, the scope of users affected. Do NOT paste secrets (DB password, Anthropic key, user emails).
+Surface enough detail in chat that the user can paste it into a support ticket — version, release, error message, the time it happened (Clouve support reads the container log for that time), the scope of users affected. Do NOT paste secrets (DB password, Anthropic key, user emails).

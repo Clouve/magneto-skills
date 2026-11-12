@@ -18,9 +18,15 @@
 # Each of ARGS is quoted with printf %q, so a URL, a search string or a path with spaces, quotes,
 # $, ;, &, a newline or a * reaches wp as one argument, unexpanded. stdin is closed (ssh -n).
 #
-# Since wp sees WordPress's real settings, `config list` and `config get` of DB_PASSWORD or any
-# *_KEY or *_SALT would print secrets into the chat: wp.sh refuses them with exit 64.
-# `config list --fields=name` (the names only) and `config has <NAME>` are fine.
+# Since wp sees WordPress's real settings, `config list` and `config get` can print secrets into
+# the chat. wp.sh refuses them with exit 64, with two exceptions: `config list` with exactly one
+# --fields=name and a --format that is left out or table, csv, json or yaml (the names only), and
+# `config get` of a constant that is not DB_PASSWORD, a *_KEY or a *_SALT and has no word of the
+# skills' secret rule in its name (PASSWORD, PASS, PWD, SECRET, KEY, TOKEN, CREDENTIAL, PRIVATE,
+# AUTH and their plurals). `config has <NAME>` is fine. A `config list` without --format gets
+# --format=table from wp.sh, since wp-cli would take a default from its config file, and a first
+# word that starts with @ (a wp-cli alias, which runs the command somewhere else) is refused. This
+# stops accidents only: `wp.sh eval` and other commands can still print anything.
 #
 # ssh takes the host key the container shows and keeps none (StrictHostKeyChecking=accept-new,
 # UserKnownHostsFile=/dev/null), since the containers can make new host keys at a start, and
@@ -54,8 +60,10 @@ channel, with WordPress's own database settings. wp's output and exit code pass 
 
   --   end of wp.sh's own options (wp.sh -- --help shows wp's help)
 
-It refuses config list and config get of DB_PASSWORD, a key or a salt: they would print
-secrets. config list --fields=name and config has <NAME> are fine.
+It refuses config list unless it shows only the names (one --fields=name, and --format left
+out or table, csv, json or yaml), and config get of DB_PASSWORD, a key, a salt or a constant
+with a secret word in its name, and a first word that starts with @ (a wp-cli alias).
+config has <NAME> is fine.
 
 Examples:
   wp.sh core version
@@ -84,31 +92,68 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # wp gets WordPress's real settings, so a command that prints wp-config.php's constants would put
-# the database password, the keys and the salts into the chat: `config list` (unless it shows only
-# the names) and `config get` of DB_PASSWORD or any *_KEY or *_SALT are refused. The command words
-# are the arguments that don't start with -, so a wp option before them changes nothing.
+# the database password, the keys and the salts into the chat. The command words are the arguments
+# that don't start with -, so a wp option before them changes nothing. A refusal names the rule and
+# doesn't repeat the arguments.
 refuse() {
-    msg "refused: wp.sh $1 would print the database password, a key or a salt into the chat."
+    msg "refused: $1 would print a secret into the chat."
     msg "Use 'wp.sh config has <NAME>' to see whether a constant is set, or 'wp.sh config list --fields=name' for the names."
     exit 64
 }
+# is_secret_constant NAME: DB_PASSWORD, a key or a salt, or a name with a _-separated word of the skills' secret
+# rule in it (magneto-skills CLAUDE.md, "Which names"; _clv_is_secret_name in magneto-agent's secrets-lib.sh).
+is_secret_constant() {
+    case "${1^^}" in
+        DB_PASSWORD | *_KEY | *_SALT) return 0 ;;
+    esac
+    case "_${1^^}_" in
+        *_PASSWORD_* | *_PASSWORDS_* | *_PASSWD_* | *_PASS_* | *_PWD_* | *_SECRET_* | *_SECRETS_* \
+            | *_KEY_* | *_KEYS_* | *_TOKEN_* | *_TOKENS_* | *_CREDENTIAL_* | *_CREDENTIALS_* \
+            | *_PRIVATE_* | *_AUTH_*)
+            return 0
+            ;;
+    esac
+    return 1
+}
 words=()
-names_only=0
+fields=()
+formats=()
+field_option=0
 for arg in "$@"; do
     case "${arg}" in
-        --fields=name | --field=name) names_only=1 ;;
+        --fields=*) fields+=("${arg#--fields=}") ;;
+        --fields) fields+=("") ;;
+        --field=* | --field) field_option=1 ;;
+        --format=*) formats+=("${arg#--format=}") ;;
+        --format) formats+=("") ;;
         -*) ;;
         *) words+=("${arg}") ;;
     esac
 done
+args=("$@")
+case "${words[0]:-}" in
+    @*)
+        msg "refused: a wp-cli alias (a first word that starts with @) runs the command somewhere these checks can't follow."
+        exit 64
+        ;;
+esac
 if [ "${words[0]:-}" = config ]; then
     case "${words[1]:-}" in
-        list) [ "${names_only}" -eq 1 ] || refuse "config list" ;;
-        get)
-            constant="${words[2]:-}"
-            case "${constant^^}" in
-                DB_PASSWORD | *_KEY | *_SALT) refuse "config get ${constant}" ;;
+        list)
+            if [ "${#fields[@]}" -ne 1 ] || [ "${fields[0]}" != name ] || [ "${field_option}" -ne 0 ]; then
+                refuse "config list with anything but one --fields=name"
+            fi
+            if [ "${#formats[@]}" -gt 1 ]; then refuse "config list with more than one --format"; fi
+            case "${#formats[@]}:${formats[0]:-}" in
+                0:) args+=(--format=table) ;;
+                1:table | 1:csv | 1:json | 1:yaml) ;;
+                *) refuse "config list with a --format other than table, csv, json or yaml" ;;
             esac
+            ;;
+        get)
+            if is_secret_constant "${words[2]:-}"; then
+                refuse "config get of DB_PASSWORD, a key, a salt or a constant with a secret word in its name (PASSWORD, PASS, PWD, SECRET, KEY, TOKEN, CREDENTIAL, PRIVATE, AUTH)"
+            fi
             ;;
     esac
 fi
@@ -132,7 +177,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/wp-remote.sh
 . "${script_dir}/lib/wp-remote.sh" || { msg "could not load lib/wp-remote.sh next to wp.sh"; exit 1; }
 
-remote="$(wp_remote_command "$@")"
+remote="$(wp_remote_command "${args[@]}")"
 
 # SSHPASS is set on the sshpass command only, so the password is on no command line. The options
 # are written out on each ssh line, where tests/lib/ssh-host-key-check.py can check them.

@@ -33,9 +33,9 @@
 # SHA-256 digest that is compared and never shown, which tells a change that happened from one
 # that didn't.
 #
-# The file is ~/wordpress-passwords/<safe login>-<UTC YYYYmmdd-HHMMSS>.txt, mode 600 in a folder
-# of mode 700. The safe login is the login with every byte outside A-Za-z0-9._@- turned into _.
-# A file made in the same second as another gets -2, then -3, so one never replaces another. It
+# The file is ~/wordpress-passwords/<the account's ID>-<UTC YYYYmmdd-HHMMSS>.txt, mode 600 in a
+# folder of mode 700. Its name and the output line give the ID, not the login, which is often an
+# email address. A file made in the same second as another gets -2, then -3, so one never replaces another. It
 # holds the login, the sign-in page (WORDPRESS_SITE_URL/wp-login.php, when that is set), the UTC
 # time it was made, the password on a line of its own, and a reminder to have the password
 # changed and the file deleted.
@@ -52,7 +52,10 @@
 # is https, WordPress forces SSL for wp-login.php and would redirect a plain-HTTP request before
 # it checks the password, so the check then also sends X-Forwarded-Proto: https, the header the
 # site's ingress sends with every request. The official image's wp-config.php honours it and
-# treats the request as HTTPS. WordPress's answer headers go to a file in the temporary folder,
+# treats the request as HTTPS. It sends the site's own host as the Host header too, as the
+# ingress does, when the address's host is a plain host name with an optional port: a site that
+# sends any other host to its own address first would answer the check with that redirect. The
+# connection still goes to the container, and curl follows no redirect. WordPress's answer headers go to a file in the temporary folder,
 # deleted straight after, and are never printed: they hold a live session. The check counts as
 # accepted only when WordPress answers 302, sets its wordpress_logged_in_ cookie and redirects
 # to wp-admin, or first to the admin email check it shows an administrator every six months. A
@@ -258,12 +261,12 @@ mysql_query() {
 # The login goes into the SQL as a hex literal, so a quote or a backslash in it can't end the string.
 login_hex="$(printf '%s' "${login}" | od -An -tx1 -v | tr -d ' \n')"
 ids="$(mysql_query "SELECT ID FROM \`${P}users\` WHERE user_login = CONVERT(X'${login_hex}' USING utf8mb4);")" \
-    || die 1 "could not look up the login \"${login}\" (mysql said: $(cat "${errfile}")). Nothing was changed."
+    || die 1 "could not look up the login (mysql said: $(cat "${errfile}")). Nothing was changed."
 mapfile -t id_list < <(printf '%s\n' "${ids}" | grep -E '^[0-9]+$')
 case "${#id_list[@]}" in
-    0) die 2 "no account has the login \"${login}\". Check it with the user (playbooks/rotate-admin-credentials.md, step 1). Nothing was changed." ;;
+    0) die 2 "no account has that login. Check it with the user (playbooks/rotate-admin-credentials.md, step 1). Nothing was changed." ;;
     1) id="${id_list[0]}" ;;
-    *) die 2 "${#id_list[@]} accounts have the login \"${login}\" (IDs ${id_list[*]}), so it doesn't pick one. Nothing was changed." ;;
+    *) die 2 "${#id_list[@]} accounts have that login (IDs ${id_list[*]}), so it doesn't pick one. Nothing was changed." ;;
 esac
 
 # stored_hash_digest: a SHA-256 digest of the account's stored hash, for comparing only
@@ -299,12 +302,11 @@ hide_password() { printf '%s\n' "${1//"${pw}"/[password hidden]}"; }
 
 # write_password_file: the file is written before anything changes in WordPress. Sets name and path.
 write_password_file() {
-    local dir safe_login stamp made_date made_time base n content sign_in=""
+    local dir stamp made_date made_time base n content sign_in=""
     dir="$(password_dir)" || die 3 "could not set up ~/wordpress-passwords. Nothing was changed in WordPress."
-    safe_login="$(LC_ALL=C; printf '%s' "${login//[^A-Za-z0-9._@-]/_}")"
     read -r stamp made_date made_time <<< "$(LC_ALL=C date -u '+%Y%m%d-%H%M%S %Y-%m-%d %H:%M:%S')"
     [ -n "${made_time}" ] || die 1 "date gave no time. Nothing was changed in WordPress."
-    base="${safe_login}-${stamp}"
+    base="${id}-${stamp}"
     name="${base}.txt"
     n=1
     while [ -e "${dir}/${name}" ] || [ -L "${dir}/${name}" ]; do
@@ -362,7 +364,7 @@ finish() {
     fi
     if [ "${after}" = "${before}" ]; then
         if [ "${rc}" -ne 0 ]; then
-            msg "${tool} could not change the password of \"${login}\" (exit ${rc}):"
+            msg "${tool} could not change the password of user ID ${id} (exit ${rc}):"
             hide_password "${output}" >&2
         else
             msg "${tool} reported success, but the account's stored password did not change."
@@ -395,6 +397,13 @@ finish() {
     case "${WORDPRESS_SITE_URL:-}" in
         https://?*)
             curl_opts+=(-H 'X-Forwarded-Proto: https')
+            # The site's host, sent as the ingress sends it, only when it is a plain host name and an
+            # optional port: user info, a space or a line break in the address sends no Host header.
+            site_host="${WORDPRESS_SITE_URL#https://}"
+            site_host="${site_host%%[/?#]*}"
+            if [[ "${site_host}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?$ ]]; then
+                curl_opts+=(-H "Host: ${site_host}")
+            fi
             redirect_why="With FORCE_SSL_ADMIN on and a wp-config.php that ignores X-Forwarded-Proto, or a plugin that hides wp-login.php, WordPress redirects before it checks the password"
             ;;
     esac
@@ -427,8 +436,8 @@ finish() {
         fi
         rm -f -- "${headers}"
     fi
-    printf 'Saved the temporary password for %s to wordpress-passwords/%s in the Files pane. %s.\n' \
-        "${login}" "${name}" "${result}"
+    printf 'Saved the temporary password for user ID %s to wordpress-passwords/%s in the Files pane. %s.\n' \
+        "${id}" "${name}" "${result}"
     exit 0
 }
 

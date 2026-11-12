@@ -15,6 +15,8 @@
 # line. Only the names the official image's wp-config.php reads are kept (the database settings,
 # the table prefix, WORDPRESS_DEBUG, WORDPRESS_CONFIG_EXTRA and the eight keys and salts, each
 # also as NAME_FILE), so the deployment's admin password and the rest stay out of wp's reach.
+# A sudo log in the container that records a command's environment (sudo's JSON event log, or
+# an I/O log) would keep these values, so don't turn one on.
 # When the file can't be read, wp runs without them, and both errors come back on stderr.
 #
 # Each of ARGS is quoted with printf %q, which the remote bash decodes, so an argument with

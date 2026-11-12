@@ -44,7 +44,26 @@ if [ -e "${OUT}" ]; then
   echo "[odoo/backup] ${OUT} already exists; give another output path" >&2
   exit 1
 fi
-mkdir -p "$(dirname "${OUT}")"
+
+# odoo db dump runs as the odoo user on Odoo images from 2026-11-03 on, so a
+# missing folder for the backup is made as odoo's, mode 700. The default
+# folder, right inside data_dir, is made by root one level deep and given to
+# odoo: mkdir without -p fails on anything already there, a link included,
+# and chown -h changes the folder itself. That holds only when no part of
+# data_dir's path is a link. Any other folder is made by the odoo user itself,
+# so a link in a path that odoo controls can't make root create a folder
+# somewhere else. An existing folder is left as it is.
+OUT_DIR="$(dirname -- "${OUT}")"
+if [ ! -d "${OUT_DIR}" ]; then
+  if [ "$(dirname -- "${OUT_DIR}")" = "${DATA_DIR}" ] \
+      && [ "$(realpath -e -- "${DATA_DIR}" 2>/dev/null)" = "${DATA_DIR}" ]; then
+    mkdir -m 700 -- "${OUT_DIR}"
+    chown -h odoo:odoo -- "${OUT_DIR}"
+  elif ! setpriv --reuid=odoo --regid=odoo --init-groups --no-new-privs -- mkdir -p -m 700 -- "${OUT_DIR}"; then
+    echo "[odoo/backup] can't make ${OUT_DIR} as the odoo user; give a folder odoo can write, or leave out the output path" >&2
+    exit 1
+  fi
+fi
 
 echo "[odoo/backup] ${DB} -> ${OUT} (database + filestore + manifest)"
 # </dev/null: under `bash -s` this script arrives on stdin; keep odoo off it.

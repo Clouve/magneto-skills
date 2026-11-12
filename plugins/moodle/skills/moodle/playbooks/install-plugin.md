@@ -62,7 +62,7 @@ If any of the above raise concerns, surface them to the user and ask them to cho
 ### 1. Maintenance mode on
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/maintenance.php --enable'
 ```
 
@@ -84,7 +84,7 @@ For `theme_<name>`: `<dirroot>/public/theme/<name>/`
 Note the `public/` prefix — from Moodle 5.1 on (so on 5.2 and 5.3), plugin trees are inside `public/`. The `<dirroot>/` path is the project root and lives outside webroot; the plugin code itself goes inside `public/`.
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} bash <<'EOF'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} bash <<'EOF'
 set -e
 cd /tmp
 curl -L -o plugin.zip "$PLUGIN_URL"
@@ -106,7 +106,7 @@ Stop here and confirm with the user before running step 4.
 `admin/cli/upgrade.php` discovers the new plugin (because its `version.php` is now on disk) and runs its `db/install.xml` + `db/install.php`:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --non-interactive'
 ```
 
@@ -115,7 +115,7 @@ Watch the output for the plugin's name. If it says "Installing <plugin> 2024xxxx
 ### 5. Purge caches and disable maintenance
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php && \
      sudo -u www-data php /var/www/html/admin/cli/maintenance.php --disable'
 ```
@@ -159,7 +159,7 @@ The image's upgrade logs each held-back plugin with its reason and its folder in
 1. Take the backup (step 2 of the install).
 2. Copy the folder to its place in the current code. From Moodle 5.1 on, plugin folders are under `public/` (see step 3 of the install for each type):
    ```bash
-   sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+   SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
        'sudo cp -a /var/www/html/clouve/upgrade-stash/<run>/public/local/<name> /var/www/html/public/local/<name> && \
         sudo chown -R www-data:www-data /var/www/html/public/local/<name>'
    ```
@@ -174,7 +174,7 @@ If the upgrade or the plugin's pages fail, take the plugin out again: remove the
 If a plugin install was a mistake or it's no longer needed:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/uninstall_plugins.php --plugins=<frankenstyle> --run'
 ```
 
@@ -183,7 +183,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
 The `--run` flag was historically required for the destructive action; without it the script lists what it WOULD do (dry run). Always do the dry run first:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/uninstall_plugins.php --plugins=<frankenstyle> --showsql'
 ```
 

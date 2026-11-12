@@ -23,7 +23,7 @@ SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e s
   "sudo bash -s -- <db>" < /clouve/skills/odoo/plugin/skills/odoo/scripts/backup.sh
 ```
 
-The script is in this skill's own folder, here in the agent container. The Odoo container has no copy of it, and nothing needs installing there: `bash -s` reads the script from the pipe and runs it inside the Odoo container as root. It runs `odoo db dump`, writes `/var/lib/odoo/backups/<db>-<UTC timestamp>.zip` on Odoo's data volume, and checks that the ZIP holds `dump.sql`, `manifest.json` and the filestore. If the dump or the check fails, it exits non-zero and deletes the file.
+The script is in this skill's own folder, here in the agent container. The Odoo container has no copy of it, and nothing needs installing there: `bash -s` reads the script from the pipe and runs it inside the Odoo container as root. It runs `odoo db dump`, writes `/var/lib/odoo/backups/<db>-<UTC timestamp>.zip` on Odoo's data volume (making a missing `backups` folder as the `odoo` user's, mode 700, since the dump runs as `odoo` on images from 2026-11-03 on), and checks that the ZIP holds `dump.sql`, `manifest.json` and the filestore. If the dump or the check fails, it exits non-zero and deletes the file.
 
 Its last line is the backup's path and where it lives, for example `[odoo/backup] done: /var/lib/odoo/backups/odoo-20261020-071500.zip (516K). It is on Odoo's data volume, which survives restarts, next to the data it protects; copy it off the deployment for a separate copy`. `/var/lib/odoo` is that data volume, so a backup there is kept across restarts; copying it off (step 5) gives you a copy that doesn't share the volume with the data. Note the path for step 5. To pick the path yourself, add it after the database name: `"sudo bash -s -- <db> /tmp/<db>.zip"`.
 
@@ -85,7 +85,7 @@ SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e s
 There is no `kubectl` in this container, and `scp` can't read `/var/lib/odoo`: that folder belongs to the `odoo` user, and `scp` runs as clouve-ops without sudo. Stream the file over the SSH channel with `sudo cat` into the Magneto Agent's persistent home directory:
 
 ```bash
-mkdir -p "$HOME/backups"
+install -d -m 700 "$HOME/backups"   # whole databases: yours alone
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
   "sudo cat /var/lib/odoo/backups/<db>-<timestamp>.zip" > "$HOME/backups/<db>-<timestamp>.zip"
 ```

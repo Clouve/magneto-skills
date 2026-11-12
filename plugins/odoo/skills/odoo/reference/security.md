@@ -39,8 +39,8 @@ becomes the new master password.** There is no confirmation step. An attacker wh
 reaches the `/web/database/create` endpoint before the operator sets a real password
 can adopt any password they choose on the first request.
 
-**Mitigation:** Set a strong `admin_passwd` in `odoo.conf` before exposing the port, or
-use `list_db=False` (see below).
+**Mitigation:** Set a strong `admin_passwd` in `odoo.conf` before exposing the port, and
+use `list_db = False` (see below). Clouve's Odoo image does both at every start.
 
 ## list_db=False — the real kill-switch
 
@@ -48,28 +48,41 @@ Setting `list_db = False` (CLI flag `--no-database-list`) causes
 `check_db_management_enabled()` (`service/db.py:46-53`) to raise `AccessDenied` on any
 call that touches DB management functions. All mutating routes become inaccessible.
 
-**BUT: you must also pin `db_name` or `dbfilter`.**
-Without a pinned database, the DB selector widget returns an empty list and the Odoo
-login page breaks (it cannot determine which DB to connect to).
+**BUT: you must also pin the database.** With one database Odoo picks it by itself, but
+once PostgreSQL holds a second one, the login page sends the browser to a database
+selector, which the lock leaves empty.
 
 ```ini
-; odoo.conf
+; odoo.conf, as Clouve's Odoo image writes it at every start
 list_db = False
-db_name = myproductiondb       ; or use dbfilter = ^myproductiondb$
+dbfilter = ^odoo\Z       ; the deployment's ODOO_DB_NAME, dots escaped
 ```
 
-**The GET manager page still returns HTTP 200 with a banner when `list_db=False`.**
-Do not rely on a 200/non-200 check to confirm the kill-switch is active. Verify by
-attempting a POST:
+Clouve's image pins the database with `dbfilter`, not `db_name`. Odoo 19 creates every
+`db_name` database that is missing when the server starts, at every start and every
+SIGHUP restart (`cli/server.py`, `main()`), and a database made that way has the admin
+login `admin` with the password `admin` (`base/data/res_users_data.xml`). `dbfilter`
+creates nothing. Either one makes a browser reach the pinned database only: Odoo
+ignores a session, an `X-Odoo-Database` header or a `?db=` for any other name
+(`http.py`, `_get_session_and_dbname`; `web/controllers/utils.py`, `ensure_db`).
+
+`odoo db` (dump, load, duplicate, rename, drop) still works: it sets `list_db = True`
+for itself after reading the config (`cli/db.py`). `odoo shell`, `odoo module` and
+`odoo neutralize` never touch the lock.
+
+**The GET manager page still returns HTTP 200 with a banner when `list_db = False`,**
+and a POST with a made-up master password proves nothing either: the routes check the
+master password first (`check_super`), so a locked and an open manager give the same
+AccessDenied. Ask for the database list, which needs no password and answers an error
+only while the manager is locked:
 
 ```bash
-# Should return a rendered error (AccessDenied), not succeed:
-curl -s -X POST https://your-odoo/web/database/backup \
-  -F master_pwd=test -F name=mydb -F backup_format=zip | head -20
+curl -s -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"call","params":{}}' \
+  https://your-odoo/web/database/list
 ```
 
-Block the entire `/web/database/` prefix at the ingress for any instance where DB
-management should be completely unreachable:
+On an install you run yourself, also block the entire `/web/database/` prefix at the
+ingress. Clouve's ingress doesn't; on Clouve the lock is `list_db = False`:
 
 ```nginx
 location /web/database/ {
@@ -125,9 +138,9 @@ client_max_body_size 500m;   # adjust to your largest legitimate backup
 ## Hardening checklist
 
 1. Set a strong `admin_passwd` in `odoo.conf` before first boot.
-2. Set `list_db = False` with a pinned `db_name` or `dbfilter` for production.
-3. Block `/web/database/` at the ingress for production instances.
+2. Set `list_db = False` with a pinned database (`dbfilter`) for production. Clouve's Odoo image writes both at every start.
+3. Block `/web/database/` at the ingress on an install you run yourself (Clouve's ingress doesn't).
 4. Enable `proxy_mode = True` and have the proxy strip client `X-Forwarded-*`.
 5. Enforce TLS at the proxy and add `Secure; SameSite=Lax` to session cookies.
 6. Cap upload size at the ingress (`client_max_body_size`).
-7. Verify with a POST probe that DB management is actually blocked, not just hidden.
+7. Verify with the database list (`/web/database/list` answers an error) that DB management is actually blocked, not just hidden.

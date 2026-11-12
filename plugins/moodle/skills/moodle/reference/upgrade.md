@@ -23,7 +23,7 @@ When they're equal, the site is healthy.
 # Check the invariant from the Magneto Agent container:
 CODE_VER=$(curl -sf http://moodle/version.php 2>/dev/null | grep -oE "version *= *[0-9.]+" | head -1)
 # Or via SSH into the moodle container:
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@"$MOODLE_HOST" \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@"$MOODLE_HOST" \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \$CFG->version, PHP_EOL;"'
 # DB version:
 PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$MOODLE_DB_HOST" -U "$MOODLE_DB_USER" -tAc \

@@ -6,34 +6,31 @@ This file describes when SSH is the right tool vs. the TCP `mysql`/`curl` channe
 
 ## Authenticating
 
-The per-pod password is `CLOUVE_OPS_PASSWORD`. It isn't in your environment on current agents, so a command fetches it with `${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}`. Use `sshpass -e`, which reads from `SSHPASS` rather than the command line, so it never lands in shell history or `ps`:
+The per-pod password is `CLOUVE_OPS_PASSWORD`. It isn't in your environment on current agents, so each command fetches it with `${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}` and sets `SSHPASS` on the `sshpass` command itself. `sshpass -e` reads the password from `SSHPASS` rather than the command line, so it never lands in shell history or `ps`. Don't `export SSHPASS` once and reuse it: your next Bash call starts without it.
 
 ```bash
-# Make the per-pod password available to sshpass (do this once per shell):
-export SSHPASS=${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}
-
 # Open an interactive shell in the moodle container:
-sshpass -e ssh clouve-ops@${MOODLE_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST}
 
 # Open an interactive shell in the moodle-mysql container:
-sshpass -e ssh clouve-ops@${MOODLE_DB_HOST}
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST}
 
 # Run a one-shot command (preferred for scripted operations):
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
-    "sudo tail -50 /var/log/apache2/error.log"
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
+    "df -h /var/moodledata"
 ```
 
-Don't rely on a saved host key. From the 5.3 image on, the `moodle` container makes a new SSH host key at every start, so a key saved earlier is wrong after the next restart. The AI Assistant (Magneto Agent 4.5.3 or later) saves no key for its sibling containers, so the commands here connect as they are. The skill's scripts pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, which take the key the container shows and save nothing. If ssh still stops with "REMOTE HOST IDENTIFICATION HAS CHANGED", or `sshpass` exits 6 and prints nothing, the agent has no SSH settings for this container: add those two options to the command.
+Pass `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null` on every connection, as every command in this skill does. The two options take the key the container shows and save nothing. From the 5.3 image on, the `moodle` container makes a new SSH host key at every start, so a key saved earlier is wrong after the next restart, and ssh refuses it ("REMOTE HOST IDENTIFICATION HAS CHANGED"). An older agent has no SSH settings of its own for the app's containers, so there a command without the options stops at the first connection: `sshpass` can't answer the yes/no prompt for a key it doesn't know, and exits 6 without printing anything.
 
 ## When SSH is the right tool
 
 The SSH hop is unambiguously needed for any of:
 
-- **Tailing PHP / Apache logs.** `/var/log/apache2/error.log` and `/var/log/apache2/access.log` are inside the moodle container — not reachable any other way.
-- **Running Moodle CLI scripts.** `admin/cli/*.php` lives at `/var/www/html/admin/cli/` inside the moodle container. Use `sudo -u www-data php /var/www/html/admin/cli/<script>.php` so the script runs as the web user with the right `$CFG->dataroot` permissions.
+- **Checking the Apache logs.** On this image `/var/log/apache2/error.log` and `access.log` are links to the container's own output, which even SSH can't read: see [The Apache error log](#the-apache-error-log) before you read either.
+- **Running Moodle CLI scripts.** `admin/cli/*.php` lives at `/var/www/html/admin/cli/` inside the moodle container. Use `sudo -u www-data php /var/www/html/admin/cli/<script>.php` so the script runs as the web user with the right `$CFG->dataroot` permissions. [scripts/temp-password.sh](../scripts/temp-password.sh) sends a new password through sudo's stdin this way, so don't turn on a sudo log in the container that records what a command reads (sudo's I/O log): it would keep the password.
 - **Inspecting `/var/www/html` filesystem.** Listing plugin directories, checking `<dataroot>` permissions, locating a config file.
-- **Restarting Apache or PHP-FPM.** `sudo systemctl reload apache2` or `sudo apachectl graceful`. Required after a `config.php` edit (the change isn't picked up until the worker recycles).
-- **Inspecting MariaDB / Postgres internals on the DB host.** `/etc/mysql/`, `/var/lib/mysql/`, slow query log files, `mysqltuner`, `pg_stat_*` views via the on-host socket.
+- **Reloading Apache.** `sudo apachectl graceful`. The containers have no systemd, so there is no `systemctl`. A `config.php` edit takes effect within a minute without a reload, since OPcache checks files every 60 seconds on this image; the reload applies it at once.
+- **Inspecting MySQL internals on the DB host.** `/etc/my.cnf`, `/var/lib/mysql/`, slow query log files, disk use. The Clouve image runs MySQL 8.4.
 - **Writing to `<dataroot>` for diagnostics.** E.g. `chown -R www-data:www-data <dataroot>` after a volume remount.
 
 ## When NOT to use SSH
@@ -51,7 +48,7 @@ The TCP channels (mysql, curl) are faster and produce more reliable transcripts.
 Having a `sudo` prompt does not change the safety story. Every gate from [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow) applies whether the command runs locally in Magneto Agent or via SSH:
 
 - `sudo apachectl stop` is destructive — gate it.
-- `sudo systemctl stop mariadb` (on the DB host) is destructive — gate it.
+- Stopping `mysqld` on the DB host stops that container, and the site has no database until it's back. There's no systemd to stop it gently. Gate it, and prefer Clouve support.
 - `sudo rm -rf /var/www/html/...` is destructive — gate it.
 - `sudo mysqldump --all-databases > /tmp/dump.sql` is fine (read-only) but **its output may contain secrets** — be careful where you put the file and what you do with it next.
 - `sudo php /var/www/html/admin/cli/upgrade.php` IS the upgrade — gate it via [playbooks/upgrade-moodle.md](../playbooks/upgrade-moodle.md).
@@ -59,48 +56,52 @@ Having a `sudo` prompt does not change the safety story. Every gate from [SKILL.
 
 The general rule: if the same command would require user ack when run from Magneto Agent, it requires user ack when run via SSH.
 
+## The Apache error log
+
+Check what `/var/log/apache2/error.log` is before reading it:
+
+```bash
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
+    "ls -l /var/log/apache2/"
+```
+
+The moodle image is built on `php:8.3-apache`, whose `error.log` and `access.log` are links to `/dev/stderr` and `/dev/stdout`. Then Apache's and PHP's errors go to the container's own log, which nothing in this pod can read, SSH included: don't `tail` the link, since the command hangs and reads nothing. Work from what you can see (the HTTP response, the error text the user saw, `mdl_logstore_standard_log`, `mdl_task_log`, `admin/cli/checks.php`, `php -l` on a suspect file) and leave the container log to Clouve support. If `error.log` is a regular file on this install, `sudo tail -100` it.
+
 ## Common one-shot commands
 
 ```bash
-# Tail Apache error log (most useful one-shot — diagnoses 500s)
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo tail -100 /var/log/apache2/error.log'
-
-# Tail Moodle's own error log (Moodle writes some warnings via PHP error_log)
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo tail -100 /var/log/apache2/error.log | grep -i moodle'
-
 # Check the running Moodle code version
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \$CFG->version, PHP_EOL;"'
 
 # List currently running scheduled tasks
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --list'
 
 # Check whether an upgrade is pending
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --is-pending; echo "exit: $?"'
 
 # Read the effective config value for a setting
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cfg.php --name=lang'
 
 # Check disk usage on the dataroot volume
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'df -h /var/moodledata'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'df -h /var/moodledata'
 
 # Check directory permissions on dataroot
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'ls -la /var/moodledata | head'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'ls -la /var/moodledata | head'
 
 # Reload Apache after a config.php change
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo apachectl graceful'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo apachectl graceful'
 
-# On the DB host: show MariaDB / Postgres version
-sshpass -e ssh clouve-ops@${MOODLE_DB_HOST} 'sudo mariadb --version'
-sshpass -e ssh clouve-ops@${MOODLE_DB_HOST} 'sudo -u postgres psql -c "SELECT version();"'
+# On the DB host: show the MySQL version
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST} 'mysqld --version'
 ```
 
 ## What you do NOT do over SSH
 
-- Edit `<dirroot>/config.php` by hand. Use the env-var-driven path: change the env in the pod definition, restart the pod. The image's entrypoint regenerates `config.php` from env on boot. (See [reference/configuration.md](configuration.md).)
+- Edit the database or `wwwroot` lines of `<dirroot>/config.php`. The image writes them from the deployment's settings at every start, and only Clouve can change those settings, so an edit there breaks the site or is undone at the next start ([reference/configuration.md](configuration.md)). Other `config.php` edits go through the gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow).
 - Install plugins by `git clone`-ing into `<dirroot>/local/`. Use [playbooks/install-plugin.md](../playbooks/install-plugin.md) instead: it vets the plugin and takes a backup first. Plugins on the code volume survive pod restarts, and the image's upgrade carries them over to a newer Moodle.
 - Modify Moodle's own code under `<dirroot>`. The next image upgrade replaces it with a clean copy, so the edit is lost, and a broken core file can take the site down until then.
-- Stop or restart MariaDB / Postgres. Even with sudo, this is a tenant-impacting action — gate it and prefer to escalate to Clouve ops.
+- Stop or restart `mysqld`. Stopping it stops the database container, and the site is down until the container is back. Even with sudo, gate it, and prefer Clouve support.

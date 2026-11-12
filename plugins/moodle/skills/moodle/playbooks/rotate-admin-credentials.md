@@ -4,7 +4,7 @@ Use this playbook when the tenant has lost or wants to rotate the primary admin 
 
 ## Preconditions
 
-- [ ] User has acknowledged that the rotation will log the affected user(s) out of any active sessions.
+- [ ] User has acknowledged that the rotation ends the account's Moodle sessions: the person signs in again.
 - [ ] You have a way to communicate the new password back to the user **out-of-band** (not in chat). The user should set the password themselves on the next login. The right pattern is "set a temporary password and force a password change on first login."
 - [ ] If rotating the primary admin (uid=2): user has confirmed there's no other admin available, OR they've already proven their identity to you in a way that justifies it.
 
@@ -13,70 +13,37 @@ Use this playbook when the tenant has lost or wants to rotate the primary admin 
 ### 1. Confirm the target user
 
 ```sql
-SELECT id, username, email, deleted, suspended, FROM_UNIXTIME(lastlogin) AS last
+SELECT id, username, email, auth, deleted, suspended, FROM_UNIXTIME(lastlogin) AS last
 FROM mdl_user
 WHERE username = '<the username>'
    OR email = '<the email>';
 ```
 
-There should be exactly one row, `deleted = 0`, `suspended = 0`. If there are two users with the same email, surface to the user — Moodle allows non-unique emails by default but the password reset flow is ambiguous.
+There should be exactly one row, `deleted = 0`, `suspended = 0`. If there are two users with the same email, surface to the user — Moodle allows non-unique emails by default but the password reset flow is ambiguous. Note `auth`: `manual`, `email` and the Education Kit's synced `db` accounts get their password here; an SSO account doesn't (see below).
 
-### 2. Use Moodle's CLI tool
-
-[admin/cli/reset_password.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/reset_password.php) is the right path — it hashes the password, updates `mdl_user.password`, invalidates the user's existing sessions, and logs the change.
+### 2. Set a temporary password with scripts/temp-password.sh
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
-    "sudo -u www-data php /var/www/html/admin/cli/reset_password.php --username='<the username>' --password='<temporary-strong-random>'"
+/clouve/skills/moodle/plugin/skills/moodle/scripts/temp-password.sh -- '<the username>'
 ```
 
-Notes:
+The script makes a strong password, saves it to a private file, and only then changes Moodle. It asks Moodle for the account first, by its username, then sets the password by the account's id in the moodle container, as `www-data`, with the password on PHP's stdin. The password is never printed and never on a command line, here or in the container. It does what Moodle's own profile page does when an admin types a new password: the account's sign-in plugin sets it (Moodle records `\core\event\user_password_updated`), the External Database sync's `create_password` preference is cleared, so Moodle's "Send new user passwords" task doesn't replace it within five minutes, a new password is required at the next sign-in, and the account's sessions end. Then it checks the password against the stored hash.
 
-- `--password` accepts the new password directly. Generate a strong random one (`openssl rand -base64 24` is fine).
-- The script does NOT print the password back, but **the password is in your shell history and the SSH process tree for the duration of the call**. To avoid this:
-  ```bash
-  read -s -p "New password: " NEWPASS && echo
-  sshpass -e ssh clouve-ops@${MOODLE_HOST} \
-      "sudo -u www-data php /var/www/html/admin/cli/reset_password.php --username='<user>' --password=\"$NEWPASS\""
-  unset NEWPASS
-  ```
-- `reset_password.php` only finds accounts with `auth = 'manual'` (its lookup filters on it), so for any other auth method it stops with "Can not find user". In the Education Kit, the students and staff that Moodle syncs from Gibbon are `auth = 'db'`. Set their password from a short CLI script run as `www-data` that reads the password from stdin and calls `update_internal_user_password($user, $password)`, then `unset_user_preference('create_password', $user)`, plus `set_user_preference('auth_forcepasswordchange', 1, $user)` for a temporary one. The unset matters: the sync tags every user it creates with `create_password`, and Moodle's "Send new user passwords" task replaces that user's password with a random one at its next run (each cron run, every five minutes here) and emails it. Without the unset, the password you hand over stops working within five minutes of the sync. Check it after the next cron run, not just straight away. Their account stays `auth = 'db'`, so Gibbon keeps owning the name, email and status. The External Database sync is `public/auth/db/cli/sync_users.php` on Moodle 5.x (checked in the kit's Moodle 5.2 container, 2026-10-20). Moodle 5.3 changes none of this: `reset_password.php` still only finds `auth = 'manual'` accounts, and the sync still sets `create_password` on each user it creates (checked in the 5.3 code, 2026-11-10).
+It prints one line, for example:
 
-### 3. Force a password change on next login
-
-Set the user's `mdl_user.password_change_required` flag so Moodle redirects them to the change-password page on first login:
-
-```sql
-UPDATE mdl_user
-SET preference_auth_forcepasswordchange = 1
-WHERE username = '<the username>';
+```
+Saved the temporary password for Moodle user id 42 to moodle-passwords/42-20261111-181530.txt in the Files pane. Moodle took it (checked against the stored hash) and asks for a new password at the first sign-in.
 ```
 
-Wait — that's actually a user *preference*, not a column. The right way is via `mdl_user_preferences`:
+The file is `~/moodle-passwords/<user id>-<UTC time>.txt`, mode 600, in a folder of mode 700. Its name and the line give the account's id, not the username, which is often an email address; the username is inside the file, for the hand-over. Never open, print or copy the file yourself. The line also says when the account is suspended, locked after failed sign-ins, or uses a sign-in method that is turned off.
 
-```sql
-INSERT INTO mdl_user_preferences (userid, name, value)
-VALUES (
-  (SELECT id FROM mdl_user WHERE username='<the username>'),
-  'auth_forcepasswordchange',
-  '1'
-)
-ON DUPLICATE KEY UPDATE value = '1';
-```
+If the script exits 2, read its message. When Moodle changed nothing (no such account, an SSO account, or the site's password policy refused the password), it has deleted the file again. When the password may be set, it keeps the file and says so.
 
-For PostgreSQL, replace `ON DUPLICATE KEY UPDATE` with:
+Why not `admin/cli/reset_password.php`: on Moodle 5.3 it finds only `auth = 'manual'` accounts, and it writes the hash straight into `mdl_user`. It records no event, ends no session, clears no `create_password` and asks for no new password at the next sign-in. Its `--password=` option puts the password on the moodle container's command line, where `ps` shows it.
 
-```sql
-INSERT INTO mdl_user_preferences (userid, name, value)
-VALUES ((SELECT id FROM mdl_user WHERE username='<the username>'), 'auth_forcepasswordchange', '1')
-ON CONFLICT (userid, name) DO UPDATE SET value = excluded.value;
-```
+### 3. Verify the forced change
 
-Or, more cleanly, use the admin UI: Site administration → Users → Accounts → Browse list of users → click the user → Edit → "Force password change".
-
-### 4. Verify
-
-The user can now log in with the temporary password and is immediately redirected to the password-change page.
+The script sets the `auth_forcepasswordchange` preference. To see it:
 
 ```sql
 SELECT u.username, p.name, p.value
@@ -86,25 +53,33 @@ WHERE u.username = '<the username>'
   AND p.name = 'auth_forcepasswordchange';
 ```
 
-Should show `value = '1'`.
+Should show `value = '1'`. The admin UI shows the same: Site administration → Users → Accounts → Browse list of users → the user → Edit → "Force password change".
 
-### 5. Communicate the temp password
+### 4. Hand off outside the chat
 
-Out-of-band — call, secure messaging, password manager, NOT chat or email. Tell the user:
+In the chat, say only where the password is: "The temporary password for Moodle user id <id> is in `moodle-passwords/<file>` in the Files pane." Then the admin, not you:
 
-- The temporary password.
-- That they must change it on first login.
-- That their existing sessions are invalidated.
+- passes the password on by voice, secure message or a password manager entry, never by chat or plain email;
+- tells the person that Moodle asks for a new password at the first sign-in;
+- tells them their other sessions were ended.
 
-### 6. Audit log
+Once the admin says it's handed over, delete the file:
 
-The reset is recorded in `mdl_logstore_standard_log`:
+```bash
+/clouve/skills/moodle/plugin/skills/moodle/scripts/temp-password.sh --remove '<file name>'
+```
+
+It prints `Deleted moodle-passwords/<file>.` and deletes only a `.txt` file inside that folder, with `shred -u` where it can.
+
+### 5. Audit log
+
+Moodle records the change in `mdl_logstore_standard_log`, with the account in `relateduserid`:
 
 ```sql
-SELECT FROM_UNIXTIME(timecreated), action, target, userid, ip
+SELECT FROM_UNIXTIME(timecreated), action, target, userid, relateduserid, ip
 FROM mdl_logstore_standard_log
-WHERE eventname = '\core\event\user_password_updated'
-  AND objectid = (SELECT id FROM mdl_user WHERE username='<the username>')
+WHERE eventname = '\\core\\event\\user_password_updated'
+  AND relateduserid = (SELECT id FROM mdl_user WHERE username='<the username>')
 ORDER BY timecreated DESC LIMIT 5;
 ```
 
@@ -112,7 +87,7 @@ This is your evidence the rotation happened.
 
 ## Special case: the primary admin (uid=2) is the only admin
 
-If the tenant has lost the only admin credential, you can also create a NEW admin via direct SQL (last resort) — but the cleaner path is to use `admin/cli/reset_password.php` for the existing primary admin.
+If the tenant has lost the only admin credential, you can also create a NEW admin via direct SQL (last resort) — but the cleaner path is `scripts/temp-password.sh` for the existing primary admin.
 
 If for some reason the primary admin user is broken (e.g. `deleted = 1` somehow):
 
@@ -124,17 +99,19 @@ This is not a fast workflow — accept the time cost and stay cautious.
 
 ## Special case: SSO-managed accounts
 
-If the user is authenticated via SSO (`auth_oauth2`, `auth_shibboleth`, etc.), `mdl_user.password` is not used. Resetting it does nothing — the user authenticates against the IdP, not Moodle's local DB.
+If the user is authenticated via SSO (`auth_oauth2`, `auth_shibboleth`, LDAP, etc.), `mdl_user.password` is not used. Resetting it does nothing — the user authenticates against the IdP, not Moodle's local DB. `scripts/temp-password.sh` refuses such an account and names its sign-in method.
 
 ```sql
 SELECT username, auth FROM mdl_user WHERE username = '<the username>';
 ```
 
-If `auth` is anything other than `manual` or `email`, the password reset has to happen at the IdP, not in Moodle. Surface this to the user.
+If `auth` is anything other than `manual`, `email` or the Education Kit's `db` (whose passwords Moodle keeps), the password reset has to happen at the IdP, not in Moodle. Surface this to the user.
 
 ## What NOT to do
 
-- Don't `UPDATE mdl_user SET password = MD5('newpass')` or any direct hash. Moodle uses bcrypt with a salt; raw MD5 / SHA writes will be rejected at login.
+- Don't `UPDATE mdl_user SET password = MD5('newpass')` or any hash you made. Moodle 5.3 stores a salted SHA-512 crypt hash and can add a site pepper; a hand-made hash skips the pepper, the event and the forced change.
+- Don't pass a password to `admin/cli/reset_password.php` with `--password=`: it lands on the moodle container's command line, where `ps` shows it.
+- Don't type or keep a password in a shell variable (`read -s` and the like): your next Bash call doesn't have it, and the script's file is the hand-over.
 - Don't reuse the same temp password across multiple users.
 - Don't write the new password to chat. Even ephemeral chat content can be screenshotted and shared.
 - Don't bypass the `auth_forcepasswordchange` preference — making the user change immediately is a hard requirement for "you reset their password" flows.

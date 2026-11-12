@@ -2,7 +2,7 @@
 name: wordpress
 description: Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions "WordPress", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.
 type: devops
-version: 0.1.7
+version: 0.1.8
 authoredAgainst: wordpress v6.9.0
 ---
 
@@ -126,7 +126,7 @@ The gates are the reason this skill exists. If any of these are skipped, assume 
 | Any multi-row `UPDATE`/`DELETE` on `wp_*` | `SELECT COUNT(*)` first + user ack |
 | Single-row scalar option write/delete (incl. `rewrite_rules`) | Print the exact SQL + user ack |
 | Schema change (`ALTER`, `CREATE`, `DROP`, `TRUNCATE`) | Full DB dump **and** `wp-content/` archive (where a file channel exists) first, then user ack |
-| Edit `wp-config.php` | Requires a file channel; show diff + user ack; prefer the env-driven path on the packaged shape |
+| Edit `wp-config.php` | Requires a file channel; show the lines you change, never a key, a salt or the database password (never a diff or a print of the file) + user ack; a setting that comes from the container's environment (the `WORDPRESS_*` variables) is a Clouve support request on the packaged shape |
 | Edit `siteurl` / `home` | Shape check first (env reconciler wins on the packaged shape) + backup + [playbooks/change-site-url.md](playbooks/change-site-url.md) |
 | `search-replace` across content | wp-cli `--dry-run` shown to the user first; refuse raw SQL over serialized data |
 | Install / update / delete a plugin or theme | Trusted source verified + backup + user ack; never via SQL |

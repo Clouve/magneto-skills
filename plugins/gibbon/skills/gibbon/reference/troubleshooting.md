@@ -6,7 +6,7 @@ Ordered by how often they actually occur. For each: symptoms, the first thing to
 
 **Symptoms.** After bumping the app's Gibbon version, a page renders with the old CSS/JS, or a TinyMCE editor stops saving, or a form shows fields from the previous version.
 
-**First check.** Did anyone restart the `gibbon` container since the version bump? `entrypoint.sh` wipes `uploads/cache/` on every start. If the container wasn't restarted, the cache is stale.
+**First check.** Has the `gibbon` container started since the version bump? `entrypoint.sh` wipes `uploads/cache/` at every start, so a cache older than the bump is stale.
 
 **Fix.** From the Gibbon UI, go to **System Admin → Cache Manager → Clear Cache**, or empty `uploads/cache/` over the `clouve-ops` channel ([operations-and-signals.md](operations-and-signals.md#clearing-the-upload-cache)). The next container start clears it too, but the user has no restart button for the app.
 
@@ -36,7 +36,7 @@ The image already writes `php_value max_input_vars 8000` there — the user can 
 
 **First check.** Look at `$DB_PASSWORD`. Does it contain `/` or `&`? The image's `update-config.sh` escapes these before the sed, but earlier versions had a bug there. Double-check with the current script at [apps/gibbon/image/installer/update-config.sh](../../image/installer/update-config.sh).
 
-**Fix.** If the password has unsafe characters and the escape is still broken, set `DB_PASSWORD` via a Kubernetes secret containing only alphanumerics + simple symbols. Tenant-editable passwords (e.g. from a rotated Clouve secret) should not contain `/`, `&`, `\`, or single-quote without escaping.
+**Fix.** Restore `config.php` from the backup to get Gibbon back ([playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md)). The password comes from the deployment's settings, which only Clouve support can change: if it has a `'` or a `\` in it, ask Clouve support for one of letters and digits.
 
 ## 5. `gibbonSetting(version)` disagrees with `version.php`
 

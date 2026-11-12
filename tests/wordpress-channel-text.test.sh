@@ -172,7 +172,29 @@ stale 'that a 302 from wp-login.php alone means the password works' \
 # --- No restart, container list or container log the user doesn't have (4.5.3 re-review N2) ----
 
 stale 'that the user restarts the app, the pod or the container, or that a restart is the fix' \
-  'restart (the|their|your) (app|application|pod|container)\b|restart of the (app|application|pod|container)|restart is (the|a valid) fix|kubectl rollout|restart[^.]*clouve ui'
+  'restart (the|their|your) (`[^`]+` )?(app|application|pod|container)\b|restart of the (app|application|pod|container)|restart is (the|a valid) fix|kubectl rollout|restart[^.]*clouve ui|restart (the )?pod\b|pod restart (is|to)\b|\+ pod restart|on pod restart'
+
+# From the 4.5.5 images on, every container makes new host keys at each start (N6), not only after a rebuild.
+stale 'that the host keys change only when an image is rebuilt' 'a rebuilt image has new host keys'
+
+# --- Settings that come from the container's environment (wordpress 0.1.8, release 4.5.5) -----
+
+# M2: the WORDPRESS_* variables are the deployment's settings, and nothing lets the customer change them, so no
+# line sends the assistant to "the env-driven path" for a wp-config.php change: that is a Clouve support request.
+stale 'that a wp-config.php change should take the env-driven path' \
+  'prefer (the |that )?env[- ]|env(-var)?-driven (sync |config )?(path|pattern)|via env vars|env injection on pod restart|rotate the secret|rotated clouve secret|via a kubernetes secret|clouve platform ui'
+# wp-config.php holds the eight keys and salts in plain text, so its gate shows the changed lines, never a diff
+# (as the gibbon, moodle and odoo gates do).
+stale 'that a wp-config.php change is shown as a diff' 'show (a |the )?diff'
+# N1: the WordPress image from 4.5.5 on takes WORDPRESS_DEBUG out when it is false, off or no, so WP_DEBUG is off;
+# the "unverified" caveat about the manifest's 'false' turning it on is replaced by what was checked.
+stale 'the unverified WP_DEBUG caveat' 'truthiness caveat \(unverified|No one has read a generated file'
+if grep -F 'WORDPRESS_DEBUG' "$SKILL_DIR/reference/configuration.md" | grep -qiE 'release 4\.5\.5 on takes (the variable|it) out' \
+  && grep -F 'WORDPRESS_DEBUG' "$SKILL_DIR/reference/stack-and-runtime.md" | grep -qiE 'release 4\.5\.5 on takes it out'; then
+  pass "configuration.md and stack-and-runtime.md say the 4.5.5 image takes WORDPRESS_DEBUG=false out"
+else
+  fail "configuration.md and stack-and-runtime.md say the 4.5.5 image takes WORDPRESS_DEBUG=false out"
+fi
 stale 'that the user has a pod list or a platform dashboard to check' 'pod[- ]?list|platform dashboards?'
 
 echo

@@ -68,7 +68,7 @@ Two distinct causes — check which you have before touching anything:
    curl -sI "http://${WORDPRESS_HOST}/wp-content/uploads/<path-from-guid>"
    ```
    All 404 → the uploads tree is missing/stale. Recovery needs the file half of a backup restored: over the shell on Shape A, from a `wp-content` archive ([playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md), step 5); without a shell, route per [reference/backup-restore.md](backup-restore.md) and support.
-2. **Uploads permissions** — *new* uploads fail while old media serves. On Shape A the entrypoint re-chowns `wp-content/uploads` to `www-data` on **every boot**, so a platform-side pod restart is the no-shell fix; if uploads still fail after a restart, escalate. On Shape B no reconciler exists — a perms fix needs a file channel; route to support.
+2. **Uploads permissions** — *new* uploads fail while old media serves. On Shape A the entrypoint re-chowns `wp-content/uploads` to `www-data` on **every boot**. With the shell, `sudo chown -R www-data:www-data /var/www/html/wp-content/uploads` fixes it now; without one, the user has no restart button, so it's a Clouve support request. On Shape B no reconciler exists — a perms fix needs a file channel; route to support.
 
 ## Lost admin access
 

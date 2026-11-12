@@ -35,10 +35,11 @@ fi
 : "${MOODLE_HOST:?MOODLE_HOST not set}"
 : "${CLOUVE_OPS_PASSWORD:?CLOUVE_OPS_PASSWORD not set}"
 
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=10)
+# The two host-key options are written out on each ssh line, where tests/lib/ssh-host-key-check.py reads them.
+ssh_opts=(-o BatchMode=no -o ConnectTimeout=10)
 
 ssh_run() {
-    SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh "${ssh_opts[@]}" \
+    SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ssh_opts[@]}" \
         "clouve-ops@${MOODLE_HOST}" "$1"
 }
 

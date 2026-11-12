@@ -90,7 +90,7 @@ The course backup wizard's "Include users" toggle controls this. From CLI, [admi
 ```bash
 mkdir -p /tmp/rollover-mbz
 for course_id in 101 102 103 104 105; do
-  sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
       "sudo -u www-data php /var/www/html/admin/cli/backup.php \
          --courseid=$course_id \
          --destination=/tmp/rollover-mbz/"
@@ -102,7 +102,7 @@ Each course produces an `.mbz` file in `/tmp/rollover-mbz/`. For a school with 2
 Verify:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'ls -la /tmp/rollover-mbz/ | wc -l'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'ls -la /tmp/rollover-mbz/ | wc -l'
 ```
 
 ### 7. Restore each into the new category as a new course
@@ -112,7 +112,7 @@ NEXT_CAT_ID=$(MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}
     -e "SELECT id FROM mdl_course_categories WHERE name = 'Term 2026-Q1';")
 
 for mbz in /tmp/rollover-mbz/*.mbz; do
-  sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
       "sudo -u www-data php /var/www/html/admin/cli/restore_backup.php \
          --file=$mbz --categoryid=$NEXT_CAT_ID"
 done
@@ -164,7 +164,7 @@ It KEEPS:
 ### 11. Take a backup OF THIS COURSE specifically
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     "sudo -u www-data php /var/www/html/admin/cli/backup.php --courseid=$COURSE_ID --destination=/tmp/pre-reset/"
 ```
 

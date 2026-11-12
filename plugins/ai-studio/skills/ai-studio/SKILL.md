@@ -2,7 +2,7 @@
 name: ai-studio
 description: Operate the Clouve AI Studio workspace — an Ubuntu 26.04 LTS server pre-seeded with a running MERN starter — on the user's behalf — install software, write code, run supervised services, debug, and verify. Use when the user is working with the Clouve AI Studio app, when they ask to 'install', 'set up', 'deploy', 'run', or 'host' something on the server, when they reference paths under /home/clouve-ops, /opt, /usr/local, or long-lived services on the workspace, or when they describe a project they want built and running end-to-end on a Linux server. Do not use for questions about the Magneto Agent chat host itself (terminal, FileBrowser), or for operating other Clouve sibling apps (Moodle, Gibbon, etc.).
 type: devops
-version: 0.2.3
+version: 0.2.4
 authoredAgainst: ubuntu:26.04
 ---
 
@@ -40,18 +40,18 @@ Use this skill when the user is working with the Clouve AI Studio app, when they
 
   ```bash
   SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-      -o StrictHostKeyChecking=no \
+      -o StrictHostKeyChecking=accept-new \
       -o UserKnownHostsFile=/dev/null \
       clouve-ops@${AI_STUDIO_HOST}
   ```
 
-  `StrictHostKeyChecking=no` is intentional — sshd host keys regenerate on each pod restart because `/etc/ssh/` is not persistent. The session security is "is the password right" (per-pod, secret), not host-key pinning.
+  Pass both options on every connection. sshd's host keys change at each pod restart, because `/etc/ssh/` is not persistent, so a saved key would be wrong: `UserKnownHostsFile=/dev/null` saves none, and `StrictHostKeyChecking=accept-new` takes the key the workspace shows instead of stopping at a prompt that `sshpass` can't answer. The session's security is the per-pod password, not host-key pinning.
 
 - For one-shot commands, prefer the inline form rather than an interactive session:
 
   ```bash
   SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh \
-      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
       clouve-ops@${AI_STUDIO_HOST} '<command>'
   ```
 
@@ -92,7 +92,7 @@ Build the URL straight from them, e.g. for a service on port 5173:
 
     printf 'https://%s-%s.%s/\n' 5173 "$CLV_STUDIO_JWT_TKT_ID" "$CLV_STUDIO_BASE_HOST"
 
-No registration step — any port the user's dev server binds is immediately reachable.
+No registration step — any port the user's dev server binds is immediately reachable. Port 80 is the exception: on a workspace from the 4.5.5 image on, it serves the deployment's own address, a fixed page that points to the AI Assistant, from the image's `page` program. Don't bind port 80 or stop that program; give the user's servers other ports.
 
 **Bind to `0.0.0.0`, not `127.0.0.1`.** The proxy lives in a different pod from the workspace; loopback-only servers are unreachable. Concretely:
 

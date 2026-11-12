@@ -2,7 +2,7 @@
 name: nextcloud
 description: Safely run a Nextcloud 35 file sync and share server on Clouve through occ over the clouve-ops SSH channel. It covers staff accounts and groups, Team folders, sharing and links, quotas, Nextcloud apps, email setup, backups and restores, setup warnings, background jobs, stuck upgrades and maintenance mode, and slow or broken pages. Use when the user runs the Clouve Nextcloud app or mentions "Nextcloud", `occ`, `config.php` in `/var/www/html/config`, Team folders or groupfolders, WebDAV, CalDAV or CardDAV sync, share links, or `oc_*` tables. Do not use for ownCloud, or for generic PHP, Apache or MySQL questions that aren't tied to a Nextcloud instance.
 type: devops
-version: 0.1.0
+version: 0.1.1
 authoredAgainst: nextcloud v35.0.2
 ---
 
@@ -94,7 +94,7 @@ Team folders, Calendar and Contacts are apps from the Nextcloud app store. The f
   - `NEXTCLOUD_URL`: the public address people use. A custom domain changes it.
   - `NEXTCLOUD_ADMIN_USER` and `NEXTCLOUD_ADMIN_EMAIL`: the admin's login and email address. The admin can sign in with either.
   - `NEXTCLOUD_DB_HOST`, `NEXTCLOUD_DB_NAME` and `NEXTCLOUD_DB_USER`: the database.
-  - `NEXTCLOUD_MARIADB_HOST`: the database container's host name, the same container as `NEXTCLOUD_DB_HOST`. Don't rely on any other `NEXTCLOUD_MARIADB_*` name. Those values may be missing, because root can't read the database server's environment once it runs as the mysql user.
+  - `NEXTCLOUD_MARIADB_HOST`: the database container's host name, the same container as `NEXTCLOUD_DB_HOST`. Don't rely on any other `NEXTCLOUD_MARIADB_*` name: on an image from before release 4.5.5 most are missing. From the 4.5.5 image on, `clv-secret --list` also shows `NEXTCLOUD_MARIADB_MYSQL_PASSWORD` and `NEXTCLOUD_MARIADB_MYSQL_ROOT_PASSWORD`, the database container's own. Use `NEXTCLOUD_DB_PASSWORD`, and leave the root password alone ([reference/shell-access.md](reference/shell-access.md)).
 
   No variable ends in `_PORT`. Nextcloud listens on port 80 and the database on 3306.
 - The passwords are `NEXTCLOUD_DB_PASSWORD` (the database user's), `NEXTCLOUD_ADMIN_PASSWORD` (the admin's first password, as the Clouve dashboard shows it; they may have changed it since) and `CLOUVE_OPS_PASSWORD` (the SSH account's). Passwords aren't in your environment on current agents. Commands here fetch one with `${NAME:-$(clv-secret NAME)}`, which also works on older agents. `clv-secret --list` shows the names. Never run `clv-secret NAME` on its own or print a value.

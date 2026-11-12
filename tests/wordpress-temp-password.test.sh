@@ -53,14 +53,24 @@
 #   site's public address, which the stand-in can't reach, so the password never leaves the
 #   cluster.
 #
+# wordpress 0.1.8 (release 4.5.5, N2): curl posts the password to every URL it is given, so the
+# stand-in curl records each URL of each call, and every check of where the check posts requires
+# exactly one URL per call, the container's. For an https site the check also sends a Host header
+# from WORDPRESS_SITE_URL, only when that is a plain host and an optional port, so a site that
+# redirects any other host to its own address before it checks the password (the canonical-host
+# stand-in) still answers; the connection stays the container's and no redirect is followed. The
+# password file is named by the account's ID and the output line names the ID, not the login, which
+# is often an email address.
+#
 # No network and no Docker: the script runs under `env -i` with the stand-ins first on PATH, and
 # everything is written under mktemp -d.
 #
-# Run: bash tests/wordpress-temp-password.test.sh
+# Run: bash tests/wordpress-temp-password.test.sh [path/to/temp-password.sh]
+# (a path runs that copy instead, with its lib/ next to it: how the mutants run)
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-SCRIPT="$ROOT/plugins/wordpress/skills/wordpress/scripts/temp-password.sh"
+SCRIPT="${1:-$ROOT/plugins/wordpress/skills/wordpress/scripts/temp-password.sh}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/wp-temp-password.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
@@ -270,6 +280,8 @@ EOF
 #                                 Otherwise it answers as FAKE_SIGN_IN says
 #   anything else                 no such host from the agent, the site's public address included:
 #                                 curl prints 000 and exits 6
+# Every argument that isn't an option or an option's value is a URL: each goes to $FAKE_STATE/curl-urls and
+# the call's count to $FAKE_STATE/curl-url-counts. -L or --location goes to $FAKE_STATE/curl-follow.
 # FAKE_SIGN_IN picks the answer:
 #   wp-admin     (default) the password works: 302 to wp-admin, with the logged-in cookie
 #   admin-email  the password works, and WordPress first sends an administrator to confirm the
@@ -282,14 +294,19 @@ EOF
 #   elsewhere    the logged-in cookie, but a redirect to the front page
 #   form         the login form came back: 200
 #   down         nothing answers: curl prints 000 and exits 7
+#   canonical-host  WordPress (or a plugin) sends any request whose Host isn't the site's own to the site's
+#                address before it checks the password: 302 to $site/wp-login.php, no cookie, unless the
+#                request carried "Host: <the site's host>"; then it answers as wp-admin
 # The cookies carry a session token, fake-session-token-5d2c, that must never leave the header file.
 cat > "$bin/curl" <<'EOF'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$FAKE_STATE/argv"
 env >> "$FAKE_STATE/env"
-headers="" url="" https_header=0
+headers="" url="" https_header=0 host_header="" urls=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -L | --location) echo "$1" >> "$FAKE_STATE/curl-follow"; shift ;;
+    --url) urls+=("${2:-}"); url="${2:-}"; shift 2 ;;
     -D | --dump-header) headers="${2:-}"; shift 2 ;;
     --data-urlencode)
       [ "${2:-}" = "pwd@-" ] && cat > "$FAKE_STATE/curl-stdin"
@@ -298,15 +315,22 @@ while [ "$#" -gt 0 ]; do
     -H | --header)
       printf '%s\n' "${2:-}" >> "$FAKE_STATE/curl-headers"
       [ "${2:-}" = "X-Forwarded-Proto: https" ] && https_header=1
+      case "${2:-}" in [Hh]ost:*) host_header="${2#*:}"; host_header="${host_header# }" ;; esac
       shift 2
       ;;
     -o | -w | -b | --max-time | --proto | --proto-redir | --noproxy) shift 2 ;;
     -*) shift ;;
-    *) url="$1"; shift ;;
+    *) urls+=("$1"); url="$1"; shift ;;
   esac
 done
+printf '%s\n' "${#urls[@]}" >> "$FAKE_STATE/curl-url-counts"
+[ "${#urls[@]}" -eq 0 ] || printf '%s\n' "${urls[@]}" >> "$FAKE_STATE/curl-urls"
 site="${FAKE_SITE:-https://blog.example.test}"
 answer="${FAKE_SIGN_IN:-wp-admin}"
+if [ "$answer" = canonical-host ]; then
+  site_host="${site#*://}"; site_host="${site_host%%/*}"
+  if [ "$host_header" = "$site_host" ]; then answer=wp-admin; fi
+fi
 case "$url" in
   http://wp-host/wp-login.php) case "$site" in https://*) [ "$https_header" -eq 1 ] || answer=force-ssl ;; esac ;;
   *) printf '000'; exit 6 ;;
@@ -324,6 +348,7 @@ case "$answer" in
     ;;
   force-ssl) code=302 lines=("Location: $site/wp-admin/") ;;
   hide-login) code=302 lines=("Location: $site/404/") ;;
+  canonical-host) code=302 lines=("Location: $site/wp-login.php") ;;
   elsewhere) code=302 lines=("$test_cookie" "$auth" "$logged_in" "Location: $site/") ;;
   form) code=200 lines=("$test_cookie" "Content-Type: text/html; charset=UTF-8") ;;
   down) printf '000'; exit 7 ;;
@@ -381,7 +406,8 @@ run() {
   err="$work/$name/err"
   mkdir -p "$state" "$home"
   : > "$state/argv"
-  rm -f "$state/hash-reads" "$state/wp-env" "$state/sudo-users" "$state/curl-headers"
+  rm -f "$state/hash-reads" "$state/wp-env" "$state/sudo-users" "$state/curl-headers" "$state/curl-urls" \
+    "$state/curl-url-counts" "$state/curl-follow"
   echo "hash-before" > "$state/user_pass"
   # The accounts the lookup finds, unless the case wrote its own: admin is 61 64 6d 69 6e (ID 5),
   # o'brien is 6f 27 62 72 69 65 6e (ID 7).
@@ -424,6 +450,13 @@ session_left() { grep -rlF -- "fake-session-token-5d2c" "$work" 2> /dev/null | g
 
 show() { sed 's/^/       /' "$@" | cut -c1-200; }
 
+# posts_only_to_container: every curl call had exactly one URL, the WordPress container's wp-login.php, and none
+# followed a redirect. A second URL would get the password too, whatever URL comes last.
+posts_only_to_container() {
+  [ -s "$state/curl-url-counts" ] && [ "$(sort -u "$state/curl-url-counts")" = 1 ] \
+    && [ "$(sort -u "$state/curl-urls" 2> /dev/null)" = "http://wp-host/wp-login.php" ] && [ ! -e "$state/curl-follow" ]
+}
+
 echo "wp-cli over the clouve-ops shell"
 run shell -- admin
 check "exits 0" '[ "$rc" -eq 0 ]' || show "$err"
@@ -436,8 +469,10 @@ check "the file is mode 600" '[ "$(stat -c %a "$file" 2> /dev/null)" = 600 ]'
 check "its folder is mode 700" '[ "$(stat -c %a "$home/wordpress-passwords" 2> /dev/null)" = 700 ]'
 check "the file names the login and the sign-in page" \
   'grep -qx "Login: admin" "$file" && grep -qF "https://blog.example.test/wp-login.php" "$file"'
-check "stdout is one line naming the file, not the password" \
-  '[ "$(wc -l < "$out")" -eq 1 ] && grep -qF "wordpress-passwords/$(basename "$file")" "$out"'
+check "the file is named by the account's ID and the UTC time, not the login" \
+  '[[ "$(basename "$file")" =~ ^5-[0-9]{8}-[0-9]{6}\.txt$ ]]'
+check "stdout is one line naming the file and the account's ID, not the password" \
+  '[ "$(wc -l < "$out")" -eq 1 ] && grep -qF "wordpress-passwords/$(basename "$file")" "$out" && grep -qF "user ID 5" "$out"'
 if [ -n "$pw" ]; then
   where="$(leaks "$pw")"
   check "the password is in no output and no command line (wp prints what it reads)" '[ -z "$where" ]' \
@@ -463,6 +498,10 @@ check "the sign-in check got the password on curl's stdin" \
   '[ -n "$pw" ] && [ "$(cat "$state/curl-stdin" 2> /dev/null)" = "$pw" ]'
 check "the sign-in check posts to the WordPress container with X-Forwarded-Proto: https, never to the site's public address" \
   'grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$"'
+check "  with exactly one URL per curl call (curl posts to each), the container's, and no redirect followed" \
+  'posts_only_to_container' || show "$state/curl-urls" "$state/curl-url-counts"
+check "  and Host: blog.example.test, the site's own host, as the ingress sends it" \
+  '[ "$(grep -ci "^host:" "$state/curl-headers" 2> /dev/null)" = 1 ] && grep -qx "Host: blog.example.test" "$state/curl-headers"'
 check "  through no proxy" 'grep -E "^curl " "$state/argv" | grep -qF -- "--noproxy *"'
 check "stdout says WordPress took the password at sign-in" 'grep -qi "accepted" "$out"'
 check "curl ignores ~/.curlrc (-q comes first)" 'grep -qE "^curl -q " "$state/argv"'
@@ -491,6 +530,7 @@ check "the sign-in check got the password on curl's stdin" \
 check "the sign-in check posts to the container with X-Forwarded-Proto: https, and stdout says WordPress took the password" \
   'grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$" && grep -qi "accepted" "$out"' \
   || show "$out"
+check "  with exactly one URL per curl call, the container's, and no redirect followed" 'posts_only_to_container'
 
 echo
 echo "Where the sign-in check posts"
@@ -498,10 +538,28 @@ run subdir WORDPRESS_SITE_URL=https://blog.example.test/news/ FAKE_SITE=https://
 check "a site in a folder: the check still posts to the container's wp-login.php with the header, and WordPress accepts it" \
   '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && grep -qx "X-Forwarded-Proto: https" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qvE " http://wp-host/wp-login\.php$" && grep -qi "accepted" "$out"' \
   || show "$out" "$err"
+check "  with exactly one URL per curl call, the container's, and Host: blog.example.test (the folder isn't part of it)" \
+  'posts_only_to_container && grep -qx "Host: blog.example.test" "$state/curl-headers"'
+run canonical WORDPRESS_SITE_URL=https://blog.example.test FAKE_SIGN_IN=canonical-host -- admin
+check "a site that sends other hosts to its own address first: the Host header gets the check through, and WordPress accepts it" \
+  '[ "$rc" -eq 0 ] && grep -qi "accepted" "$out" && posts_only_to_container' || show "$out" "$err"
+run hostport WORDPRESS_SITE_URL=https://blog.example.test:8443/ FAKE_SITE=https://blog.example.test:8443 -- admin
+check "a site address with a port: Host carries the host and the port" \
+  'grep -qx "Host: blog.example.test:8443" "$state/curl-headers" && posts_only_to_container'
+run hostuserinfo "WORDPRESS_SITE_URL=https://user:pw@blog.example.test/" -- admin
+check "a site address with user info: no Host header, and the post still goes only to the container" \
+  '! grep -qi "^host:" "$state/curl-headers" 2> /dev/null && posts_only_to_container'
+run hostcrlf "WORDPRESS_SITE_URL=$(printf 'https://blog.example.test\r\nX-Evil: 1/')" -- admin
+check "a site address with a CR LF and a second header in it: no Host header and no extra header line" \
+  '! grep -qi -e "^host:" -e "x-evil" "$state/curl-headers" 2> /dev/null && posts_only_to_container'
+run hostspace "WORDPRESS_SITE_URL=https://blog example.test/" -- admin
+check "a site address with a space in its host: no Host header" '! grep -qi "^host:" "$state/curl-headers" 2> /dev/null'
 run httpsite WORDPRESS_SITE_URL=http://blog.example.test FAKE_SITE=http://blog.example.test -- admin
 check "an http site: the check posts to the container without the header, and WordPress accepts it" \
   '[ "$rc" -eq 0 ] && grep -E "^curl " "$state/argv" | grep -qF "http://wp-host/wp-login.php" && ! grep -qF "X-Forwarded-Proto" "$state/curl-headers" 2> /dev/null && ! grep -E "^curl " "$state/argv" | grep -qF "http://blog.example.test" && grep -qi "accepted" "$out"' \
   || show "$out" "$err"
+check "  with no Host header (only an https site gets one) and exactly one URL per curl call" \
+  '! grep -qi "^host:" "$state/curl-headers" 2> /dev/null && posts_only_to_container'
 run nohostname WORDPRESS_HOST=nowhere -- admin
 check "the WordPress host doesn't resolve from here: exit 0, and the line says so" \
   '[ "$rc" -eq 0 ] && grep -qi "couldn.t confirm the sign-in" "$out" && grep -qi "resolve" "$out"' || show "$out" "$err"
@@ -528,12 +586,15 @@ run quote -- "o'brien"
 check "exits 0 and changes ID 7 (the login goes into the SQL as hex)" \
   '[ "$rc" -eq 0 ] && grep -qE "^sudo .*-u www-data wp --path=/var/www/html user update 7 --prompt=user_pass$" "$state/argv"' \
   || show "$err"
+check "  the file is 7-<time>.txt and stdout names user ID 7, never the login" \
+  'password_files | grep -qE "/7-[0-9]{8}-[0-9]{6}\.txt$" && grep -qF "user ID 7" "$out" && ! grep -qiF "brien" "$out"'
 
 echo
 echo "Refusals that change nothing"
 run unknown -- nobody
 check "an unknown login: exit 2, no file, no ssh" \
   '[ "$rc" -eq 2 ] && [ -z "$(password_files)" ] && ! grep -qE "^(ssh|sshpass) " "$state/argv"'
+check "  and the refusal doesn't repeat the login" '! grep -qF nobody "$err"'
 mkdir -p "$work/twice/state"
 printf '61646d696e\t5\n61646d696e\t9\n' > "$work/twice/state/accounts"
 run twice -- admin

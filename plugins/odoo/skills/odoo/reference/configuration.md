@@ -32,7 +32,7 @@
 | Option | CLI flag | Default | Notes |
 |---|---|---|---|
 | `admin_passwd` | **none** (file-only) | `'admin'` | Protects DB manager. **File-only**: no `--admin-passwd` CLI flag exists. Declared as `FileOnlyOption` in `config.py`. The entrypoint templates `ODOO_MASTER_PASSWORD` → this key; if unset, a random password is generated. At runtime Odoo hashes it with `pbkdf2_sha512`. |
-| `list_db` | `--no-database-list` | `True` | Set `list_db = False` in conf (or pass `--no-database-list`) to hide the DB selector and manager — required in production. |
+| `list_db` | `--no-database-list` | `True` | `list_db = False` locks the database manager and the database list. Clouve's Odoo image writes it at every start, with a `dbfilter` for the deployment's database (see [security.md](security.md#list_dbfalse--the-real-kill-switch)). `odoo db` turns it back on for itself, so backups and restores work. |
 
 ### Web & proxy
 
@@ -97,8 +97,12 @@ db_user = <ODOO_DB_USER>
 db_password = <ODOO_DB_PASSWORD>
 data_dir = /var/lib/odoo
 addons_path = /usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons*
+list_db = False
+dbfilter = ^<ODOO_DB_NAME>\Z
 admin_passwd = <ODOO_MASTER_PASSWORD or random>
 ```
+
+`list_db` and `dbfilter` are there on images from this release on; older images write neither.
 
 `/mnt/extra-addons` is the custom-modules volume. It is written as the pattern `/mnt/extra-addons*` so Odoo skips it quietly while no module is in it (a plain path would log "invalid addons directory" on every start and every `odoo` command) and loads it at the next start once a module is there. Odoo checks the pattern only when it starts, so after adding the first module, restart Odoo in its container (see [stack-and-runtime.md](stack-and-runtime.md#restarting-odoo)).
 

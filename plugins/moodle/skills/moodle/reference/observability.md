@@ -126,7 +126,7 @@ Pri 3 (ticket):
 - Redis hit rate > 90% on the application cache definitions.
 - No errors in the PHP error log for the last hour.
 
-The PHP error log (Apache: `/var/log/apache2/error.log`; FPM: `/var/log/php-fpm/error.log`) is where Moodle dumps `debug_developer` messages, fatal errors, and the call traces for `print_error()` failures. **Tail this during any deploy.**
+The PHP error log (Apache: `/var/log/apache2/error.log`; FPM: `/var/log/php-fpm/error.log`) is where Moodle dumps `debug_developer` messages, fatal errors, and the call traces for `print_error()` failures. On the Clouve image that file is a link to the container's own output, which nothing in the pod can read, SSH included ([shell-access.md](shell-access.md#the-apache-error-log)): Clouve support reads it.
 
 ## Surfacing tenant info to Clouve ops
 
@@ -135,6 +135,6 @@ If you can't fix something from inside the Magneto Agent container, the user fil
 - Include the value of `$CFG->release` (Site administration → Notifications, or `mdl_config WHERE name='release'`).
 - Include the result of `admin/cli/checks.php --type=status`.
 - Include the last 50 rows of `mdl_logstore_standard_log` filtered to the affected user, if applicable.
-- Include the last 100 lines of the PHP error log.
+- Include the time the error happened, so Clouve support can read the container log around it.
 
 Don't paste secrets — DB passwords, API keys, the AI Assistant's access key, user emails. Sanitize.

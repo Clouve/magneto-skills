@@ -23,7 +23,7 @@ On Clouve, a newer Moodle comes with a newer image, and the image upgrades the s
 
 ```bash
 # 1a. Code version (what's on disk):
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \"Code: \", \$CFG->version, PHP_EOL;"'
 
 # 1b. DB version (what's been applied):
@@ -57,7 +57,7 @@ Confirm the backup file exists and its size is non-trivial (Moodle DB dumps for 
 ### 3. Verify the upgrade is required (and what scope)
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --is-pending; echo "exit: $?"'
 ```
 
@@ -67,7 +67,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
 | `2` | Upgrade is pending — proceed to step 4. |
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --is-maintenance-required; echo "exit: $?"'
 ```
 
@@ -83,14 +83,14 @@ Tell the user the result before proceeding.
 If cron fires while the upgrader is mid-flight, you'll get a hung lock. Either pause the schedule (preferred) or:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --disable-wait=120'
 ```
 
 This disables cron after waiting up to 120s for the current task to finish. Verify no cron is running:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --list'
 ```
 
@@ -109,14 +109,14 @@ Wait for the container to come back up. On the Clouve image the upgrade runs dur
 On the Clouve image, check first: the start in step 5 has normally run it already.
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --is-pending; echo "exit: $?"'
 ```
 
 Exit `0`: nothing pending, so go on to step 7. Exit `2`: the code is newer than the database, so run the upgrade:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/upgrade.php --non-interactive'
 ```
 
@@ -134,7 +134,7 @@ If it fails mid-flight: **stop**, look at the error message, and follow [rollbac
 **Mandatory.** The upgrader's own warning says: *"Caches (except theme) will be STALE and MUST be purged after upgrading."*
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php'
 ```
 
@@ -143,7 +143,7 @@ sshpass -e ssh clouve-ops@${MOODLE_HOST} \
 If you disabled it in step 4:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --enable'
 ```
 
@@ -153,7 +153,7 @@ Or unpause the external scheduler.
 
 ```bash
 # 9a. Versions match — code and DB:
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php -r "require \"/var/www/html/config.php\"; echo \"Code: \", \$CFG->version, PHP_EOL;"'
 MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$MOODLE_DB_HOST" -u "$MOODLE_DB_USER" "$MOODLE_DB_NAME" -sN \
     -e "SELECT CONCAT('DB: ', value) FROM mdl_config WHERE name='version';"
@@ -169,7 +169,7 @@ MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysql -h "$M
   UNION ALL SELECT 'mdl_files', COUNT(*) FROM mdl_files;"
 
 # 9c. Health checks pass:
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php'
 ```
 
@@ -211,8 +211,8 @@ Report:
 | "Site is being upgraded, please retry later" | A start was cut off during Moodle's upgrade | The next start clears the lock and runs the upgrade again; otherwise wait about five minutes for the lock to expire |
 | Site looks different after 5.3 (theme, block layout) | The Classic theme is gone; Moodle moved the site to Boost | See [reference/changes-in-5.3.md → The Classic theme is gone](../reference/changes-in-5.3.md#the-classic-theme-is-gone) |
 | Site loads but theme is broken | Stale theme cache | `purge_caches.php --theme` and hard-reload browser |
-| `wwwroot` mismatch warnings | Underlying URL changed during deploy (HTTP→HTTPS, domain) | Update `wwwroot` env var, restart pod |
-| `Database connection failed` post-upgrade | DB password env not picked up by new image | Check DB env vars are still injected; restart pod if `config.php` regen happens at boot |
+| `wwwroot` mismatch warnings | The site's address changed (HTTP to HTTPS, a new domain) | The image writes `wwwroot` from the deployment's address at every start. If they still differ after a start, that's a Clouve support request |
+| `Database connection failed` post-upgrade | `config.php`'s database lines don't match the database | Check that MySQL answers ([diagnose-500.md](diagnose-500.md) step 3b). The image writes those lines from the deployment's settings at every start, so a mismatch that lasts past a start is a Clouve support request |
 
 ## After-action
 

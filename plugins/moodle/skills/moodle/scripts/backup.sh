@@ -150,8 +150,9 @@ log "DB dump complete: ${db_size} bytes"
 data_file="${out_dir}/moodledata.tar.gz"
 log "Archiving ${MOODLE_DATAROOT} via SSH to ${MOODLE_HOST} → ${data_file}"
 export SSHPASS="${CLOUVE_OPS_PASSWORD}"
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=no)
-if ! sshpass -e ssh "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" "
+# The two host-key options are written out on each ssh line, where tests/lib/ssh-host-key-check.py reads them.
+ssh_opts=(-o BatchMode=no)
+if ! sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ssh_opts[@]}" "clouve-ops@${MOODLE_HOST}" "
     sudo tar -C \"$(dirname "${MOODLE_DATAROOT}")\" \
         --exclude='$(basename "${MOODLE_DATAROOT}")/temp/*' \
         --exclude='$(basename "${MOODLE_DATAROOT}")/cache/*' \
@@ -196,14 +197,10 @@ cat <<NOTE
 NOTE: This backup includes the DB dump and the contents of <dataroot>
       excluding ephemeral subdirs (temp, cache, localcache, sessions,
       trashdir, muc, lock). To restore, see:
-        skills/DevOps/Moodle/skill/playbooks/rollback-from-backup.md
+        playbooks/rollback-from-backup.md
 
       The backup was taken WITHOUT toggling maintenance mode. For a
       logically-consistent backup under heavy write load (e.g. before
-      an upgrade), enable maintenance mode FIRST:
-
-          sshpass -e ssh clouve-ops@\${MOODLE_HOST} \\
-              'sudo -u www-data php /var/www/html/admin/cli/maintenance.php --enable'
-
-      then re-run this script.
+      an upgrade), enable maintenance mode FIRST with this skill's
+      scripts/maintenance.sh on, then re-run this script.
 NOTE

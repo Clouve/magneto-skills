@@ -97,7 +97,7 @@ Each of these can be verified/adjusted from Gibbon's admin UI or from `config.ph
 - Advise on hardening.
 - Run diagnostics that don't change state.
 - Patch a known CVE by upgrading (following the upgrade playbook).
-- Rotate credentials (DB: via env vars + pod restart; admin user: via Gibbon UI).
+- Rotate the admin user's password (in Gibbon's UI). The database password is Clouve support's to rotate.
 
 **Don't:**
 - Disable 2FA for an account the user hasn't proven ownership of.

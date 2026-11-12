@@ -11,7 +11,7 @@ A site upgrades once, at the first start of its `moodle` container on the 5.3 im
 To see where a site stands:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo grep -m1 -F "\$version" /var/www/html/public/version.php; sudo cat /var/www/html/clouve/installed/version; sudo ls /var/www/html/clouve/installed/ /var/www/html/clouve/upgrade-stash/'
 ```
 

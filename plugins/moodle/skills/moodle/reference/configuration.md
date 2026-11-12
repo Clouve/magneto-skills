@@ -208,7 +208,7 @@ if (!empty($redishost)) {
 }
 ```
 
-Operator-rotated DB passwords come in via the env injection on pod restart — no `config.php` edit needed. **This is the preferred path for credential rotation** — see the corresponding gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow).
+The Clouve image writes `$CFG->dbhost`, `dbname`, `dbuser`, `dbpass` and `wwwroot` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/installer/update-config.sh)), so an edit to those lines doesn't last. Nothing lets the customer change those settings, and a database password changed in MySQL alone stops working at the next start. Rotating the database password is a Clouve support request (the gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow)).
 
 ## Settings that live in the DB, not `config.php`
 

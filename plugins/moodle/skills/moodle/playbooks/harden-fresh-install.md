@@ -22,20 +22,20 @@ If `wwwroot` is `http://`, the browser refuses to send the secure cookie and the
 ## 2. Lock down `config.php` permissions
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/www/html/config.php'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/www/html/config.php'
 ```
 
 Should be `-rw-r----- 1 root www-data ...` (mode `0640`). Fix:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo chown root:www-data /var/www/html/config.php && sudo chmod 0640 /var/www/html/config.php'
 ```
 
 `<dirroot>` itself should NOT be writable by `www-data`:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'find /var/www/html -writable -user www-data 2>/dev/null | head'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'find /var/www/html -writable -user www-data 2>/dev/null | head'
 ```
 
 Should return at most a tiny number of files (often empty). Anything unexpected, investigate before continuing.
@@ -67,13 +67,13 @@ Why: blocks an admin (or anyone who can post as admin via XSS) from setting `pat
 After editing `config.php`, restart Apache to pick up the change:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo apachectl graceful'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo apachectl graceful'
 ```
 
 ## 5. Run the security check report
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php --type=security'
 ```
 
@@ -201,7 +201,7 @@ This is course-level backup. The DB + dataroot snapshot is a separate, operator-
 ## 15. Final verification
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php'
 ```
 
