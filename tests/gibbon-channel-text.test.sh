@@ -33,7 +33,8 @@
 # unpacked, and SKILL.md's gates table has a row for it.
 #
 # The user's Clouve dashboard has no restart button, no container list and no log view
-# for the app (4.5.3 re-review N2 and N3). Fails on text that has the user restart the
+# for the app (4.5.3 re-review N2 and N3; widened in 4.5.5 to "restart pod", "pod restart"
+# and "the `gibbon` container"). Fails on text that has the user restart the
 # app, the pod or the container, calls a restart the fix, or sends the user to a pod
 # list or a platform dashboard: the text says what the user can do in Gibbon, what the
 # assistant can do over its channels, or to ask Clouve support.
@@ -78,9 +79,18 @@ stale "no line hands an in-container command to the user or Clouve ops instead" 
 stale "no gibbon file still says AI Studio for the agent's side" \
   "(from|in) AI Studio"
 stale "no line has the user restart the app, the pod or the container, or calls a restart the fix" \
-  -i "restart (the|their|your) (app|application|pod|container)\b|restart of the (app|application|pod|container)|restart is (the|a valid) fix|kubectl rollout|restart[^.]*clouve ui"
+  -i "restart (the|their|your) (\`[^\`]+\` )?(app|application|pod|container)\b|restart of the (app|application|pod|container)|restart is (the|a valid) fix|kubectl rollout|restart[^.]*clouve ui|restart (the )?pod\b|pod restart (is|to)\b|\+ pod restart|on pod restart"
 stale "no line sends the user to a pod list or a platform dashboard" \
   -i "pod[- ]?list|platform dashboards?"
+
+# The database password (gibbon 0.1.5, release 4.5.5, M2). update-config.sh writes config.php's database lines from
+# the deployment's settings at every start, and nothing lets the customer change those settings: a password changed in
+# MySQL alone breaks Gibbon at the next start, and one changed in config.php is undone. So no line offers a rotation
+# through the environment, a Clouve control or a restart; the text sends it to Clouve support.
+stale "no line offers a database password rotation through the environment, a Clouve control or a restart" \
+  -i "prefer (the |that )?env[- ]|env(-var)?-driven (sync |config )?(path|pattern)|via env vars|env injection on pod restart|rotate the secret|rotated clouve secret|via a kubernetes secret|clouve platform ui"
+# The containers have no systemd (M3): mysqld is started by the image's entrypoint, so systemctl finds nothing.
+stale "no systemctl command (the containers have no systemd)" "systemctl [a-z]"
 
 # has LABEL FILE: FILE gives an `sshpass -e ssh` command to clouve-ops@${GIBBON_HOST}.
 has() {
@@ -93,6 +103,8 @@ has "playbooks/install-module.md places the module over the clouve-ops channel" 
 
 # --- SSH host keys ----------------------------------------------------------------------
 
+# From the 4.5.5 images on, every container makes new host keys at each start (N6), not only after a rebuild.
+stale "no line says the host keys change only when an image is rebuilt" -i "image's whenever it is rebuilt"
 stale "no line says to accept a host key interactively, or relies on a saved one" \
   -i "accept it interactively|key is captured|first ssh to each host|first connection|known[-_ ]?hosts?[[:space:]]+entry|subsequent connections are silent"
 

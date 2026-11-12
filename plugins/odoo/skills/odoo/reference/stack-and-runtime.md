@@ -54,7 +54,7 @@ Selection logic in `start()`:
 
 ## Restarting Odoo
 
-tini is PID 1 in the Odoo container. It runs the entrypoint, which starts the clouve-ops `sshd` in the background and then `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`, so Odoo is tini's child and `sshd` is Odoo's. tini reaps finished processes and passes signals on to Odoo. To restart Odoo, send `SIGHUP` to PID 1 over the clouve-ops channel:
+tini is PID 1 in the Odoo container. It runs the entrypoint, which starts the clouve-ops `sshd` in the background, detached, and then `exec`s into `/usr/bin/python3 /usr/bin/odoo -c /etc/odoo/odoo.conf`. So Odoo and `sshd` are both tini's children, and `sshd` keeps running while Odoo restarts. On images built from 2026-11-03 on, Odoo runs as the `odoo` user (the entrypoint drops to it before the `exec`), never as root. tini reaps finished processes and passes signals on to Odoo. To restart Odoo, send `SIGHUP` to PID 1 over the clouve-ops channel:
 
 ```bash
 SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${ODOO_HOST} \
@@ -69,7 +69,7 @@ Odoo gives in-flight requests up to a second, logs "Initiating server reload", a
 
 Odoo images built before 2026-11-02 have no tini. There the entrypoint `exec`s straight into Odoo, which is PID 1, and the same command restarts it: the `grep` finds `odoo` in either command line. Odoo never reaps processes it didn't start, so on those images every finished SSH session leaves a `<defunct>` process behind until the container restarts. Each one holds nothing but a process-table slot.
 
-Odoo's command line holds the database password, which the image's entrypoint passes as `--db_password`, so never print one in the Odoo container: no `cat` of a `/proc/*/cmdline` file and no `ps` that shows arguments (`ps aux`, `ps -ef`). The restart's `grep -q` prints nothing.
+Odoo images built before 2026-11-03 put the database password on Odoo's command line (their entrypoint passed `--db_password`). From 2026-11-03 on, Odoo reads it from `odoo.conf` only. A deployment can still run an older image, so never print a command line in the Odoo container: no `cat` of a `/proc/*/cmdline` file and no `ps` that shows arguments (`ps aux`, `ps -ef`). The restart's `grep -q` prints nothing.
 
 Installing or upgrading a module needs no restart (see [playbooks/install-or-upgrade-module.md](../playbooks/install-or-upgrade-module.md)). Don't send `SIGTERM` or `SIGKILL` to Odoo or to tini: Odoo exits, and the container stops with it. And don't hand restarts to the tenant: the Clouve dashboard has no restart button.
 
@@ -77,7 +77,7 @@ Installing or upgrading a module needs no restart (see [playbooks/install-or-upg
 
 | Path | Role |
 |---|---|
-| `/etc/odoo/odoo.conf` | Configuration file (written by entrypoint from env vars) |
+| `/etc/odoo/odoo.conf` | Configuration file, written by the entrypoint at every container start. The `odoo` user's, mode 600. It holds `db_password` and `admin_passwd` in plain text: never print it whole. On this release's image it also has `list_db = False` and a `dbfilter` for `${ODOO_DB_NAME}` |
 | `/var/lib/odoo` | Data directory (`data_dir`): filestore, sessions, addons cache |
 | `/mnt/extra-addons` | Custom/community addons mount point |
 | `/usr/lib/python3/dist-packages/odoo/addons` | Core Odoo addons (shipped in image) |

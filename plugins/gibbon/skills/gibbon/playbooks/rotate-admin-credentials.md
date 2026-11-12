@@ -3,7 +3,7 @@
 Three distinct things that can be "rotated" here, with very different procedures:
 
 1. **Gibbon admin user password** — the `GIBBON_PASSWORD` the tenant uses to log into Gibbon's UI as the first admin.
-2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`.
+2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`. Only Clouve support rotates it (section 2).
 3. **The AI Assistant's access key**: Clouve manages it, one key per deployment. You don't rotate it from here (see section 3).
 
 Pick the right one before doing anything.
@@ -23,42 +23,14 @@ If they're locked out (forgot password, no mailer configured):
 
 **Refuse to help if:** the user asking for the password reset can't prove they're the tenant admin (e.g. they're saying "my colleague is locked out, can you change his password for me?"). That's out-of-band identity verification, not Claude's call.
 
-## 2. Rotate the Gibbon DB password
+## 2. The Gibbon DB password: Clouve support only
 
-The image auto-syncs `config.php` from env vars on every restart. Use that.
-
-### Procedure
-
-1. **Take a backup first.** A DB credential rotation doesn't destroy data, but if Gibbon can't reach MySQL after restart for any reason, you want a rollback point.
-
-2. **Update the password in MySQL.** Only works if the caller has root or sufficient GRANT access:
-   ```bash
-   # Through Clouve ops or a user with MYSQL_ROOT_PASSWORD:
-   MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -h "$GIBBON_DB_HOST" -u root -e \
-     "ALTER USER 'gibbon'@'%' IDENTIFIED BY '<new-password>'; FLUSH PRIVILEGES;"
-   ```
-   From Magneto Agent you usually don't have root. Escalate to Clouve ops.
-
-3. **Update the app's env var.** `DB_PASSWORD` in the pod spec (for this app it's the `secret` type, Clouve-managed). Via the Clouve platform UI: rotate the secret.
-
-4. **Restart the `gibbon` container.** On boot, `update-config.sh` reads the new `DB_PASSWORD` from env and rewrites `config.php`:
-   ```
-   sed -i "s/^\$databasePassword = .*$/\$databasePassword = '<new>';/" config.php
-   ```
-   (The script escapes `/` and `&` but not backslashes or single-quotes — keep generated passwords alphanumeric-plus-simple-symbols.)
-
-5. **Verify.**
-   ```bash
-   # Connection works with the new password.
-   MYSQL_PWD="<new>" mysql -h "$GIBBON_DB_HOST" -u gibbon gibbon -e "SELECT 1;"
-   # Gibbon HTTP works (uses the new password from config.php).
-   curl -sI http://gibbon/index.php | head -1   # expect "HTTP/1.1 200 OK"
-   ```
+Neither you nor the customer can rotate it. The password is the deployment's `DB_PASSWORD`, a secret Clouve generates, and the customer's Clouve dashboard has no control that changes it. The image writes it into `config.php` at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/gibbon/image/installer/update-config.sh)), so a password changed in MySQL alone stops Gibbon at the next start, and one changed in `config.php` alone is put back. If the customer thinks it has leaked, they ask Clouve support.
 
 ### Do NOT
 
-- Do NOT hand-edit `config.php` to change the password — the next container restart will sync env → file and overwrite your change, or worse, the sed will fail mid-rewrite and leave `config.php` broken.
-- Do NOT put a password with `'` in it into `DB_PASSWORD`. Gibbon's `config.php` uses single-quoted PHP strings and the image's sed doesn't escape `'`.
+- Do NOT `ALTER USER` the `gibbon` database user, even with root's password in hand.
+- Do NOT hand-edit `$databasePassword` in `config.php`: the next start writes the deployment's value back.
 
 ## 3. The AI Assistant's access key
 

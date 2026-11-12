@@ -65,12 +65,12 @@ The Odoo filestore lives at `/var/lib/odoo/filestore/<dbname>/` — a **per-data
 
 ---
 
-### 2026-06-24 — `list_db=False` requires a pinned `db_name` or the login page breaks
+### 2026-06-24 — `list_db=False` requires a pinned database or the login page breaks
 
 **Category:** gotcha
 **Origin:** Authoring the harden-db-manager playbook.
 
-Setting `list_db = False` in `odoo.conf` kills the database selector. Without a pinned `db_name` (or `dbfilter`), the Odoo login page cannot determine which database to connect to and breaks. Always set both together: `list_db = False` + `db_name = mydb`. A GET to `/web/database/manager` returning HTTP 200 is NOT proof the kill-switch is active — verify by POSTing to `/web/database/backup` and confirming AccessDenied. See [reference/security.md](reference/security.md#list_dbfalse--the-real-kill-switch) and [playbooks/harden-db-manager.md](playbooks/harden-db-manager.md).
+Setting `list_db = False` in `odoo.conf` kills the database selector. With one database Odoo still picks it, but once there is a second one, the login page can't choose and breaks. Always pin the database too: Clouve's image writes `list_db = False` and `dbfilter = ^<db>\Z` at every start (not `db_name`, which makes Odoo 19 re-create a missing database with admin/admin). A GET to `/web/database/manager` returning HTTP 200 is NOT proof the kill-switch is active, and neither is AccessDenied for a made-up master password (Odoo checks the password first): ask `/web/database/list`, which answers an error only while the manager is locked. See [reference/security.md](reference/security.md#list_dbfalse--the-real-kill-switch) and [playbooks/harden-db-manager.md](playbooks/harden-db-manager.md).
 
 ---
 
@@ -143,3 +143,12 @@ The image writes `addons_path = ...,/mnt/extra-addons*`. Odoo skips the folder q
 **Origin:** Clouve's 4.5.3 release changed both Odoo images.
 
 From the 2026-11-02 images on, tini is PID 1 in the Odoo and PostgreSQL containers and passes signals on, so the restart command is unchanged. Neither image holds SSH host keys: each container makes new ones when it starts. Every `ssh` and `scp` in this skill passes `-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`, and none relies on a saved key. Fixed in place in [SKILL.md](SKILL.md), [reference/stack-and-runtime.md](reference/stack-and-runtime.md#restarting-odoo), [reference/shell-access.md](reference/shell-access.md#clouve-ops-ssh-channel) and the playbooks.
+
+---
+
+### 2026-11-11 — the database manager is locked; Odoo runs as odoo
+
+**Category:** correction
+**Origin:** Clouve's 4.5.5 release changed the Odoo image.
+
+The image writes `list_db = False` and `dbfilter = ^<ODOO_DB_NAME>\Z` into `odoo.conf` at every start, so the database manager refuses every action and a browser reaches that one database. `odoo db` still works. A POST with a made-up master password can't show the lock; `/web/database/list` can. Since 2026-11-03 Odoo runs as the `odoo` user and the database password is on no command line, and `scripts/backup.sh` makes a missing backups folder as `odoo`'s. Fixed in place in [SKILL.md](SKILL.md), [playbooks/harden-db-manager.md](playbooks/harden-db-manager.md), [reference/security.md](reference/security.md), [reference/stack-and-runtime.md](reference/stack-and-runtime.md) and [playbooks/restore-and-clone.md](playbooks/restore-and-clone.md).

@@ -4,7 +4,7 @@
 
 First thing to check, always: which shape you are on ([stack-and-runtime.md](stack-and-runtime.md)). Shape A (Clouve-packaged) actively re-asserts parts of this configuration **on every boot**; Shape B (developer compose) never touches the file after first-boot generation.
 
-Any actual `wp-config.php` edit falls under the [SKILL.md safety gate](../SKILL.md#safety-gates-enforce-these-in-every-flow): requires a file channel, show the diff, get user ack — and on Shape A prefer the env-driven path.
+Any actual `wp-config.php` edit falls under the [SKILL.md safety gate](../SKILL.md#safety-gates-enforce-these-in-every-flow): requires a file channel, show the lines you change (never a diff or a print of the file: it holds the eight keys and salts in plain text), get user ack. A setting that comes from the container's environment (the `WORDPRESS_*` variables below) can't be changed from here, and the customer has no control for it either: that's a Clouve support request.
 
 ## How the file is generated (both shapes)
 
@@ -14,7 +14,7 @@ Any actual `wp-config.php` edit falls under the [SKILL.md safety gate](../SKILL.
 |---|---|---|
 | `WORDPRESS_DB_HOST`, `_DB_NAME`, `_DB_USER`, `_DB_PASSWORD` | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Platform-injected on Clouve. **Env-authoritative — never edit these anywhere else.** Also your own [TCP-mysql] credential. |
 | `WORDPRESS_TABLE_PREFIX` | `$table_prefix` | `wp_` on Shape A. Never change on a live install — see below. |
-| `WORDPRESS_DEBUG` | `WP_DEBUG` | Any **non-empty** value reads as on — see the debug section for the Shape A caveat. |
+| `WORDPRESS_DEBUG` | `WP_DEBUG` | Any **non-empty** value reads as on. The Clouve image from release 4.5.5 on takes the variable out when it is `false`, `off` or `no` (any case) before WordPress starts (the debug section below). |
 | `WORDPRESS_AUTH_KEY` … `WORDPRESS_NONCE_SALT` (8 vars) | The 8 salt/key constants | Not set on either Clouve shape → random values generated at first boot and baked into the file on the volume. |
 | `WORDPRESS_CONFIG_EXTRA` | Raw PHP appended to the file | The official escape hatch for arbitrary constants (`DISALLOW_FILE_EDIT`, `WP_MEMORY_LIMIT`, …). Container env is platform-controlled on Clouve — adding this means a support ticket, not something you can do from the agent. |
 
@@ -30,7 +30,7 @@ Shape A wraps this entrypoint untouched, then post-processes with wp-cli — see
 | `SCRIPT_DEBUG` | `false` | Serve unminified core JS/CSS. Dev-only. |
 | `SAVEQUERIES` | `false` | Record every DB query per request. Heavy — dev-only, never leave on. |
 
-**Shape A truthiness caveat (unverified — flag before relying on it).** The official template evaluates `WP_DEBUG` as `!!getenv_docker('WORDPRESS_DEBUG', '')`, i.e. *any non-empty string is true*. The Clouve manifest sets `WORDPRESS_DEBUG='false'` — a non-empty string — so if that value passed through the stock generator, `WP_DEBUG` may effectively be **on** with display suppressed on Shape A. No one has read a generated file to confirm it. On Shape A, check before relying on it: over the shell, `wp.sh eval 'var_export(WP_DEBUG);'` ([wp.sh](../scripts/wp.sh)) prints `true` or `false` and nothing else. Until you have, treat Shape A's debug state as unknown-but-quiet.
+**`WORDPRESS_DEBUG='false'` on Shape A.** The official template evaluates `WP_DEBUG` as `!!getenv_docker('WORDPRESS_DEBUG', '')` at every request, so *any non-empty string is true*, and the Clouve manifest sets `WORDPRESS_DEBUG='false'`. On a WordPress image from before release 4.5.5 that turned `WP_DEBUG` **on**, with display kept off. The image from 4.5.5 on takes the variable out when it is `false`, `off` or `no`, in any case, before WordPress starts, so `WP_DEBUG` is off; `1` or `true` still turns it on. A site moves to that image with its next listing version. To see which you have, over the shell, `wp.sh eval 'var_export(WP_DEBUG);'` ([wp.sh](../scripts/wp.sh)) prints `true` or `false` and nothing else. wp.sh gives wp the environment the web server has, so the answer is the site's.
 
 What you can do, per channel:
 

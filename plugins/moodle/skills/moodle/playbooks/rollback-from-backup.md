@@ -14,16 +14,16 @@ Use this playbook when an upgrade or migration has put the site in a bad state, 
 ### 1. Maintenance mode on
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/maintenance.php --enable'
 ```
 
 ### 2. Stop cron
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --disable-wait=120'
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --list'   # should show no running tasks
 ```
 
@@ -42,10 +42,11 @@ MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" mysqldump -h
     "$MOODLE_DB_NAME" | gzip > "$out/db-broken.sql.gz"
 
 # dataroot — DON'T tar it if it's huge; just record what's there
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo du -sh /var/moodledata/*' > "$out/dataroot-listing.txt"
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo du -sh /var/moodledata/*' > "$out/dataroot-listing.txt"
 
-# Last 200 lines of the PHP error log
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo tail -200 /var/log/apache2/error.log' > "$out/error.log"
+# The login page's HTTP status. Apache's error log is the container's own output, which nothing in the pod can
+# read (reference/shell-access.md, "The Apache error log").
+curl -s -o /dev/null -w '%{http_code}\n' -H "Host: ${MOODLE_URL#*://}" "http://${MOODLE_HOST}/login/index.php" > "$out/login-page-status.txt"
 
 ls -la "$out"
 ```
@@ -91,7 +92,7 @@ PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" pg_restore 
 
 ```bash
 # 5a. Move the broken dataroot aside (don't delete — forensics).
-sshpass -e ssh clouve-ops@${MOODLE_HOST} <<'EOF'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} <<'EOF'
 ts=$(date +%Y%m%d-%H%M%S)
 sudo mv /var/moodledata "/var/moodledata.broken-$ts"
 sudo mkdir -p /var/moodledata
@@ -99,11 +100,11 @@ sudo chown www-data:www-data /var/moodledata
 EOF
 
 # 5b. Restore the tarball.
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     "sudo tar -C /var -xzf /tmp/moodledata-<timestamp>.tar.gz"
 
 # 5c. Verify ownership.
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/moodledata | head'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/moodledata | head'
 # Should show www-data:www-data on the immediate children.
 ```
 
@@ -131,14 +132,14 @@ You restored a backup taken on a newer Moodle into an older image. **Stop.** Moo
 ### 7. Purge caches
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php'
 ```
 
 ### 8. Run health checks
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/checks.php'
 ```
 
@@ -147,14 +148,14 @@ Anything red here is a problem. Address before letting users in.
 ### 9. Maintenance mode off
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/maintenance.php --disable'
 ```
 
 ### 10. Re-enable cron
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/cron.php --enable'
 ```
 

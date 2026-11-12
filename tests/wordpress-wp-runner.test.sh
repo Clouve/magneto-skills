@@ -20,11 +20,12 @@
 # values that $FAKE_STATE/pid1-environ (the stand-in for /proc/1/environ) holds. No network and no
 # Docker.
 #
-# Run: bash tests/wordpress-wp-runner.test.sh
+# Run: bash tests/wordpress-wp-runner.test.sh [path/to/wp.sh]
+# (a path runs that copy instead, with its lib/ next to it: how the mutants run)
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-SCRIPT="$ROOT/plugins/wordpress/skills/wordpress/scripts/wp.sh"
+SCRIPT="${1:-$ROOT/plugins/wordpress/skills/wordpress/scripts/wp.sh}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/wp-runner.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
@@ -257,10 +258,66 @@ refused "config get AUTH_SALT" config get AUTH_SALT
 refused "config get with an option before the name" config get --type=constant DB_PASSWORD
 refused "config get nonce_key in lower case, after a wp option" --skip-plugins config get nonce_key
 refused "config list" config list
+# wordpress 0.1.8 (release 4.5.5, N2): config list runs only with exactly one --fields=, valued name, no --field, and
+# a --format that is left out or one of table, csv, json, yaml. dotenv prints NAME='value' whatever the fields say.
+refused "config list --fields=name,value" config list --fields=name,value
+refused "config list with a second --fields" config list --fields=name --fields=value
+refused "config list with --field next to --fields=name" config list --fields=name --field=value
+refused "config list --field=name (only --fields=name counts)" config list --field=name
+refused "config list --fields without a value" config list --fields
+refused "config list --format=dotenv, even with --fields=name" config list --fields=name --format=dotenv
+refused "config list with a bare --format" config list --fields=name --format
+# config get also refuses a constant with a word from the skills' secret rule in its name (CLAUDE.md, "Which names").
+refused "config get WP_REDIS_PASSWORD" config get WP_REDIS_PASSWORD
+refused "config get SMTP_PASS" config get SMTP_PASS
+refused "config get stripe_secret in lower case" config get stripe_secret
+refused "config get JWT_AUTH_TOKEN" config get JWT_AUTH_TOKEN
+refused "config get MAIL_CREDENTIALS" config get MAIL_CREDENTIALS
+refused "config get MY_PRIVATE_CERT" config get MY_PRIVATE_CERT
+refused "config get LOGGED_IN_SALT (a salt, with no secret word)" config get LOGGED_IN_SALT
+# Every word of the skills' secret rule, in the middle of a name and in lower case, so a word dropped from wp.sh's
+# list fails here. The list is magneto-skills CLAUDE.md's "Which names" (and _clv_is_secret_name in magneto-agent's
+# secrets-lib.sh, compared below when that checkout sits next to this one).
+SECRET_WORDS="PASSWORD PASSWORDS PASSWD PASS PWD SECRET SECRETS KEY KEYS TOKEN TOKENS CREDENTIAL CREDENTIALS PRIVATE AUTH"
+missed=""
+for w in $SECRET_WORDS; do
+  for name in "WP_${w}_X" "my_$(printf '%s' "$w" | tr '[:upper:]' '[:lower:]')"; do
+    run secretword -- config get "$name"
+    [ "$rc" -eq 64 ] || missed+=" $name"
+  done
+done
+check "config get refuses a name with each of the 15 secret words, in any case and place" '[ -z "$missed" ]' \
+  || printf '       not refused:%s\n' "$missed"
+LIB="$ROOT/../magneto-agent/image/installer/secrets/secrets-lib.sh"
+if [ -f "$LIB" ]; then
+  lib_words="$(grep -oE '\*_[A-Z]+_\*' "$LIB" | tr -d '*_' | sort -u | tr '\n' ' ')"
+  ours="$(printf '%s\n' $SECRET_WORDS | sort -u | tr '\n' ' ')"
+  check "the word list is secrets-lib.sh's" '[ "$lib_words" = "$ours" ]' || printf '       secrets-lib.sh: %s\n' "$lib_words"
+fi
+run refuseecho -- config get nonce_salt
+check "a refusal names the rule and doesn't repeat the constant" '[ "$rc" -eq 64 ] && ! grep -qiF nonce_salt "$err"' || show "$err"
 run fieldnames -- config list --fields=name
 check "config list --fields=name (the names only) runs" '[ "$rc" -eq 0 ]' || show "$err"
+# Without --format, wp-cli takes a default from a config file (a www-data ~/.wp-cli/config.yml can say dotenv), so
+# wp.sh passes --format=table itself; a format the caller gave stays the only one.
+check "  with --format=table added, since wp-cli could take dotenv from a config file" \
+  'python3 -c "import sys; a = open(sys.argv[1], \"rb\").read().decode().split(\"\0\")[:-1]; sys.exit(a.count(\"--format=table\") != 1)" "$state/wp-args"'
+run aliasfirst -- @prod config list --fields=name
+check "a wp-cli alias first (@name): exit 64, nothing run, and stderr names the alias rule" \
+  '[ "$rc" -eq 64 ] && ! grep -qE "^(ssh|sshpass) " "$state/argv" && grep -qi "alias" "$err"' || show "$err"
+run fieldsjson -- config list --fields=name --format=json
+check "config list --fields=name --format=json runs, with no second --format" \
+  '[ "$rc" -eq 0 ] && [ "$(tr "\0" "\n" < "$state/wp-args" | grep -c -- "^--format=")" = 1 ]' || show "$err"
+run searchat -- search-replace '@old.example' '@new.example' --dry-run
+check "an @ in a later argument is no alias: search-replace '@old' '@new' runs" '[ "$rc" -eq 0 ]' || show "$err"
+run fieldsyaml -- --skip-plugins config list DB_ --fields=name --format=yaml
+check "config list with a filter, a wp option and --format=yaml runs" '[ "$rc" -eq 0 ]' || show "$err"
 run debugget -- config get WP_DEBUG
 check "config get WP_DEBUG runs" '[ "$rc" -eq 0 ]' || show "$err"
+run dbnameget -- config get DB_NAME
+check "config get DB_NAME runs" '[ "$rc" -eq 0 ]' || show "$err"
+run keychainget -- config get KEYCHAIN_PATH
+check "config get KEYCHAIN_PATH runs (KEY is a word only when _ separates it)" '[ "$rc" -eq 0 ]' || show "$err"
 
 echo
 echo "Exit codes"

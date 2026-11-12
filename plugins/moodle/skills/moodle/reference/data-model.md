@@ -38,6 +38,7 @@ These hold configuration, structure, or relationships that are routinely modifie
 | `mdl_config` | Site-wide settings | `admin/cli/cfg.php`, or the admin UI |
 | `mdl_config_plugins` | Per-plugin settings | Same |
 | `mdl_config_log` | Audit log of config changes | Read-only |
+| `mdl_upgrade_log` | Moodle's record of installs and upgrades: "Starting plugin upgrade", "Plugin upgraded", "Upgrade savepoint reached" for core and each plugin, and any exception with its details and backtrace. The place to see what an upgrade did when you can't read the container log | Read-only |
 | `mdl_course` | Course definitions (name, format, dates, category) | Course settings UI |
 | `mdl_course_categories` | Category tree | Site admin → Courses → Manage categories |
 | `mdl_course_modules` | Activity instances inside courses (the link between mod_assign instance #X and course Y) | Course editing UI |
@@ -62,7 +63,7 @@ These hold configuration, structure, or relationships that are routinely modifie
 ```sql
 SELECT name, value FROM mdl_config WHERE name IN (
     'version',                     -- installed Moodle DB version, compare to public/version.php
-    'release',                     -- human-readable release ('5.2 (Build: 20260420)')
+    'release',                     -- human-readable release ('5.3 (Build: 20261005)'; 5.2: '5.2 (Build: 20260420)')
     'siteidentifier',              -- random; identifies this installation
     'maintenance_enabled',         -- 1 if maintenance mode is on
     'cron_enabled',                -- 1 if cron is on

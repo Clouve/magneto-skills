@@ -18,15 +18,11 @@ If `200 OK`, ask the user for:
 
 A 500 on one URL with the rest of the site working is a different fact pattern from "every page is 500" and the diagnostic ladder is different.
 
-## Step 1: Read the PHP error log
+## Step 1: What the error says
 
-This is almost always where the answer is.
+On the Clouve image, Apache's error log, where PHP's fatals go, is the container's own output, which nothing in this pod can read ([reference/shell-access.md](../reference/shell-access.md#the-apache-error-log) says how to check, and what to do if it's a regular file on this install). So get the error text another way: ask the user for the exact text on the error page, check `mdl_logstore_standard_log` and `mdl_task_log` (see "When the answer isn't in the error log" below), run `admin/cli/checks.php`, and `php -l` a file you suspect. Clouve support can read the container log.
 
-```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo tail -100 /var/log/apache2/error.log'
-```
-
-The Moodle error pattern looks like:
+A Moodle error looks like:
 
 ```
 PHP Fatal error:  Uncaught Error: Class "foo" not found in /var/www/html/public/local/mything/lib.php:42
@@ -82,7 +78,7 @@ The plugin's autoloader can't find a class. Causes:
 Fix:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php'
 ```
 
@@ -94,7 +90,7 @@ SELECT plugin FROM mdl_config_plugins WHERE name = 'version' ORDER BY plugin;
 
 Compare to:
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'ls /var/www/html/public/{mod,blocks,auth,enrol,local,theme,filter}/ | sort'
 ```
 
@@ -111,9 +107,9 @@ PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$M
 ```
 
 If that fails:
-- Is the DB process up? `sshpass -e ssh clouve-ops@${MOODLE_DB_HOST} 'sudo systemctl status mariadb'` (or `postgresql`).
-- Out of disk on the DB volume? `sshpass -e ssh clouve-ops@${MOODLE_DB_HOST} 'df -h'`.
-- Did the DB credentials change? Check `mdl_config` won't help (it's in the DB you can't reach); check `<dirroot>/config.php` and the env vars on the moodle pod.
+- Is `mysqld` running? `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST} 'pgrep -ax mysqld'`. If ssh itself is refused or times out, the database container is down or starting again. The user has no restart button, so that's a Clouve support ticket, with the time it started.
+- Out of disk on the DB volume? `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST} 'df -h'`.
+- Did the database password stop matching? The image writes `config.php`'s database lines from the deployment's settings at every start, so a password changed in MySQL alone stops working. Only Clouve support can change those settings ([reference/configuration.md](../reference/configuration.md)).
 
 If `SELECT 1` succeeds but Moodle still says it can't connect:
 - Permissions on `<dirroot>/config.php` (must be readable by `www-data`).
@@ -123,13 +119,13 @@ If `SELECT 1` succeeds but Moodle still says it can't connect:
 ## Step 3c: dataroot permissions
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/moodledata | head'
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo -u www-data touch /var/moodledata/.test && sudo rm /var/moodledata/.test'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo ls -la /var/moodledata | head'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo -u www-data touch /var/moodledata/.test && sudo rm /var/moodledata/.test'
 ```
 
 If touch fails:
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} <<'EOF'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} <<'EOF'
 sudo chown -R www-data:www-data /var/moodledata
 sudo find /var/moodledata -type d -exec chmod 0770 {} +
 sudo find /var/moodledata -type f -exec chmod 0660 {} +
@@ -138,7 +134,7 @@ EOF
 
 If the volume is full:
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'sudo du -sh /var/moodledata/*'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'sudo du -sh /var/moodledata/*'
 ```
 
 Usual culprits: `<dataroot>/temp/`, `<dataroot>/trashdir/`, `<dataroot>/backup_temp/`, automated backups in `<dataroot>/backup/`. The first two are safe to wipe; the third is safe to wipe between cron runs; the fourth is configurable retention.
@@ -165,13 +161,13 @@ Same drill — usually a slow query or runaway loop in a plugin. Find the script
 ## Step 3f: MUC errors
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo cat /var/moodledata/muc/config.php' | head -50
 ```
 
 (Note: this is `<cachedir>/config.php`, NOT `<dirroot>/config.php` — different file, same name.)
 
-If you see `cachestore_memcached` or `cachestore_mongodb` mappings on a 5.2 site, those stores are gone. Either:
+If you see `cachestore_memcached` or `cachestore_mongodb` mappings on a 5.2 or 5.3 site, those stores are gone. Either:
 1. Edit Moodle's MUC config in the admin UI: Site administration → Plugins → Caching → Configuration → remove the bad mapping, switch to `redis` or `file`.
 2. Or fix it via the cache config file: edit `<cachedir>/config.php` to remove the bad blocks, then `purge_caches.php`.
 
@@ -190,13 +186,11 @@ If Redis is down, the immediate fix is to switch to the DB session handler:
 $CFG->session_handler_class = '\core\session\database';
 ```
 
-Then restart Apache. Users will lose their sessions but the site stays up. Get Redis back, then switch back.
+Then reload Apache (`sudo apachectl graceful` over the `clouve-ops` channel). Users will lose their sessions but the site stays up. Get Redis back, then switch back.
 
 ## Step 3h: rootdirpublic
 
-The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public/`. Fix the webserver config (Apache `DocumentRoot`, nginx `root`). Restart the webserver.
-
-In the Magneto Moodle image, the `DocumentRoot` is baked in at image build. If it's wrong, the image needs a fix — open a Clouve ops ticket.
+The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public/`. In the Clouve Moodle image the `DocumentRoot` is set when the image is built, so a wrong one needs an image fix: that's a Clouve support ticket.
 
 ## Step 3i: Parse error
 
@@ -206,7 +200,7 @@ A PHP file has bad syntax. Almost always a recent change:
 - A `config.php` edit introduced a syntax error.
 - A partial `cp` left a half-written file.
 
-Find the file from the fatal, check `git log` if it's git-tracked, restore the previous version. If it's `<dirroot>/config.php` and a recent edit broke it, restore from the env-driven config regen on pod restart (the entrypoint rewrites `config.php` from env on every boot).
+Find the file from the fatal, check `git log` if it's git-tracked, restore the previous version. If it's `<dirroot>/config.php` and a recent edit broke it, restore the file from the backup you took before the edit (the `config.php` gate asks for one). The image rewrites only the database and `wwwroot` lines at the next start, so it won't repair a syntax error anywhere else.
 
 ## Step 4: Tell the user
 

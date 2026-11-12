@@ -34,6 +34,12 @@ When a playbook uses `mysql` or `psql` in a one-liner, default to `mysql` (match
 
 ---
 
+## 2026-11-10 — The Clouve image is on Moodle 5.3
+
+The image moved from Moodle 5.2 to 5.3 (`$version` 2026100500), and each site upgrades once at its first start on it. What changed, and what the image does with a 5.2 site, is in [reference/changes-in-5.3.md](reference/changes-in-5.3.md). The two entries above were written on 5.2 and still hold on 5.3, except that 5.3 needs MariaDB 11.4 and PostgreSQL 17.
+
+---
+
 ## Pruning rule
 
 When an entry above is fully covered by a dedicated file under `reference/` or `playbooks/`, **delete it from this file**. Git history retains the original capture. This file should not grow beyond a screenful.

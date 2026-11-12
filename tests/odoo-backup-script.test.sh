@@ -24,12 +24,21 @@
 #   - leaves nothing that looks like a backup when the dump or the check fails
 #     (a failed `odoo db dump` leaves an empty file behind);
 #   - refuses to overwrite an existing file, and stops before dumping when the
-#     config file can't be read or no database is named.
+#     config file can't be read or no database is named;
+#   - makes a missing folder for the backup as the odoo user's, mode 700, so
+#     `odoo db dump` (which runs as odoo on images from 2026-11-03 on) can
+#     write into it. The default folder, <data_dir>/backups, is made by root
+#     one level deep and given to odoo with chown -h; any other folder is made
+#     by the odoo user itself (setpriv), so a link in a path odoo controls
+#     can't make root create a folder elsewhere. An existing folder is left
+#     alone, and a link where the default folder should be stops the script.
 #
 # The fake `odoo` accepts only `db dump <db> <path>`, records ODOO_RC and its
 # arguments, and writes a ZIP the way Odoo 19's dump_db does (dump.sql,
 # filestore/<sha1[:2]>/<sha1>, manifest.json). Fake pg_dump, ssh and sshpass
-# record any call and fail. The script runs under `env -i` with HOME and the
+# record any call and fail. Fake chown and setpriv record their arguments in
+# files of their own: chown changes nothing (the test can't give a file to
+# odoo), and setpriv runs the command after `--` as the test's own user. The script runs under `env -i` with HOME and the
 # data folder in a throwaway directory. No Odoo, PostgreSQL or network.
 #
 # Usage: bash tests/odoo-backup-script.test.sh   (exit 0 = all pass)
@@ -85,6 +94,18 @@ for name in pg_dump ssh sshpass; do
   printf '#!/bin/bash\nprintf "%s %%s\\n" "$*" >> "${FAKE_CALLS}"\necho "fake %s: must not be called" >&2\nexit 99\n' \
     "${name}" "${name}" > "${bin}/${name}"
 done
+cat > "${bin}/chown" <<'FAKE'
+#!/bin/bash
+printf '%s\n' "$*" >> "${FAKE_CHOWN_CALLS}"
+FAKE
+
+cat > "${bin}/setpriv" <<'FAKE'
+#!/bin/bash
+printf '%s\n' "$*" >> "${FAKE_SETPRIV_CALLS}"
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
+shift
+exec "$@"
+FAKE
 chmod +x "${bin}"/*
 
 # ---------------------------------------------------------------------------
@@ -105,15 +126,21 @@ run() {
   local mode="$1" how="$2"
   shift 2
   : > "${work}/calls"
+  : > "${work}/chown-calls"
+  : > "${work}/setpriv-calls"
   if [ "${how}" = stdin ]; then
     out=$(env -i HOME="${work}/home" PATH="${bin}:/usr/bin:/bin" ODOO_RC="${ODOO_RC_FOR_TEST:-${conf}}" \
-      FAKE_CALLS="${work}/calls" FAKE_ODOO_MODE="${mode}" bash -s -- "$@" < "${script}" 2>&1)
+      FAKE_CALLS="${work}/calls" FAKE_CHOWN_CALLS="${work}/chown-calls" FAKE_SETPRIV_CALLS="${work}/setpriv-calls" \
+      FAKE_ODOO_MODE="${mode}" bash -s -- "$@" < "${script}" 2>&1)
   else
     out=$(env -i HOME="${work}/home" PATH="${bin}:/usr/bin:/bin" ODOO_RC="${ODOO_RC_FOR_TEST:-${conf}}" \
-      FAKE_CALLS="${work}/calls" FAKE_ODOO_MODE="${mode}" bash "${script}" "$@" 2>&1)
+      FAKE_CALLS="${work}/calls" FAKE_CHOWN_CALLS="${work}/chown-calls" FAKE_SETPRIV_CALLS="${work}/setpriv-calls" \
+      FAKE_ODOO_MODE="${mode}" bash "${script}" "$@" 2>&1)
   fi
   rc=$?
   calls="$(cat "${work}/calls")"
+  chowns="$(cat "${work}/chown-calls")"
+  setprivs="$(cat "${work}/setpriv-calls")"
 }
 
 check() { # <label> <condition-result: 0 = pass>
@@ -218,6 +245,48 @@ check "stops before dumping when the config file can't be read" $?
 run ok stdin
 [ "${rc}" -ne 0 ] && [ -z "${calls}" ]
 check "stops before dumping when no database is named" $?
+
+# 11. The default folder is missing (it went while the container ran): root makes it, one level, and gives it to
+# odoo. odoo db dump runs as odoo on images from 2026-11-03 on and couldn't write into a folder of root's.
+reset_filestore
+run ok stdin acme
+[ "${rc}" -eq 0 ] && [ "${chowns}" = "-h odoo:odoo -- ${data}/backups" ] && [ -z "${setprivs}" ] \
+  && [ "$(stat -c %a "${data}/backups" 2>/dev/null)" = 700 ]
+check "makes a missing <data_dir>/backups mode 700 and gives it to odoo (chown -h, once)" $?
+
+# 12. The default folder is there (the entrypoint makes it at every start): left as it is.
+reset_filestore
+mkdir -m 755 "${data}/backups"
+run ok stdin acme
+[ "${rc}" -eq 0 ] && [ -z "${chowns}" ] && [ -z "${setprivs}" ] && [ "$(stat -c %a "${data}/backups")" = 755 ]
+check "leaves an existing backups folder alone (no chown, no setpriv, mode kept)" $?
+
+# 13. Code running as odoo left a link where the default folder should be: root follows nothing.
+reset_filestore
+ln -s "${work}/planted-target" "${data}/backups"
+run ok stdin acme
+[ "${rc}" -ne 0 ] && [ -z "${chowns}" ] && [ -z "${calls}" ] && [ ! -e "${work}/planted-target" ]
+check "stops before dumping when backups is a link, and makes or chowns nothing" $?
+rm -f "${data}/backups"
+
+# 14. Another folder that doesn't exist: the odoo user makes it, so a link in a path odoo controls can't make root
+# create a folder somewhere else.
+reset_filestore
+target="${work}/custom/deep/acme-custom.zip"
+run ok stdin acme "${target}"
+[ "${rc}" -eq 0 ] && [ -f "${target}" ] && [ -z "${chowns}" ] \
+  && [ "${setprivs}" = "--reuid=odoo --regid=odoo --init-groups --no-new-privs -- mkdir -p -m 700 -- ${work}/custom/deep" ] \
+  && [ "$(stat -c %a "${work}/custom/deep")" = 700 ]
+check "makes any other missing folder as the odoo user (setpriv), mode 700, with no chown" $?
+
+# 15. data_dir reached through a link: its backups folder isn't made by root either.
+reset_filestore
+ln -sfn "${data}" "${work}/datalink"
+printf '[options]\ndb_host = odoo-postgres\ndata_dir = %s\n' "${work}/datalink" > "${work}/odoo-link.conf"
+ODOO_RC_FOR_TEST="${work}/odoo-link.conf" run ok stdin acme
+[ "${rc}" -eq 0 ] && [ -z "${chowns}" ] \
+  && [ "${setprivs}" = "--reuid=odoo --regid=odoo --init-groups --no-new-privs -- mkdir -p -m 700 -- ${work}/datalink/backups" ]
+check "makes the folder as odoo, not root, when data_dir's path has a link in it" $?
 
 echo
 echo "${pass} passed, ${fail} failed"

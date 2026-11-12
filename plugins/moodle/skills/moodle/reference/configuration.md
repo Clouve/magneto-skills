@@ -1,6 +1,6 @@
 # Configuration (`config.php`)
 
-`<dirroot>/config.php` is the only file the operator edits routinely. It is **outside the webroot** and `chmod 0640 root:www-data` (web reads, only deploy user writes). The reference template is [config-dist.php](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php) — copy it to `config.php` and edit; do not edit the dist file in place.
+`<dirroot>/config.php` is the only file the operator edits routinely. It is **outside the webroot** and `chmod 0640 root:www-data` (web reads, only deploy user writes). The reference template is [config-dist.php](https://github.com/moodle/moodle/blob/v5.3.0/config-dist.php) — copy it to `config.php` and edit; do not edit the dist file in place.
 
 `config.php` is plain PHP, so you can call `getenv()` and conditionals to drive it from environment variables. The Clouve image follows that pattern — see [apps/moodle/image/installer/](../../../../apps/moodle/image/) for how the entrypoint generates `config.php` from `MOODLE_*` env vars on first boot.
 
@@ -42,7 +42,7 @@ The required minimum is `dbtype`, `dbhost`, `dbname`, `dbuser`, `dbpass`, `prefi
 
 ## Configuration surface (organized by purpose)
 
-Citations point to line numbers in [config-dist.php](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php). Use these as the canonical reference; this table is a navigation aid.
+Citations point to line numbers in [config-dist.php](https://github.com/moodle/moodle/blob/v5.3.0/config-dist.php). Use these as the canonical reference; this table is a navigation aid.
 
 ### Database
 
@@ -126,6 +126,7 @@ Citations point to line numbers in [config-dist.php](https://github.com/moodle/m
 | `$CFG->disableupdatenotifications` | `true` for sites that update via packaging, not via the in-product update feature. |
 | `$CFG->disableupdateautodeploy` | `true` to prevent the UI from initiating plugin installs. |
 | `$CFG->siterolesinitialized` | leave alone — set by installer. |
+| `$CFG->theme` | Forces the site theme. Moodle 5.3 has no `'classic'`: the Clouve image comments out a `$CFG->theme = 'classic';` line when it upgrades a site, because Moodle's upgrade can't change a forced value. See [changes-in-5.3.md](changes-in-5.3.md). |
 | `$CFG->additionalhtmlhead` | string | inject CSP / X-Frame-Options / referrer policy. See [security.md](security.md). |
 | `$CFG->passwordpolicy` | `true` | enforce minimum complexity. |
 | `$CFG->maxbytes` | int (bytes) | site-wide upload cap; admin UI enforces but PHP `upload_max_filesize` and `post_max_size` are the real caps. |
@@ -156,7 +157,7 @@ Citations point to line numbers in [config-dist.php](https://github.com/moodle/m
 
 | Setting | Purpose |
 |---|---|
-| `$CFG->alternative_file_system_class` | `'\local_myfs\file_system'` to swap out the local-filesystem backend. Used for S3 / MinIO / Azure Blob via plugins. The base class is `\core_files\file_system`. (config-dist.php line ~1198) |
+| `$CFG->alternative_file_system_class` | `'\local_myfs\file_system'` to swap out the local-filesystem backend. Used for S3 / MinIO / Azure Blob via plugins. The base class is `\core_files\file_system`. (config-dist.php line ~1200) |
 
 ### Locking
 
@@ -207,7 +208,7 @@ if (!empty($redishost)) {
 }
 ```
 
-Operator-rotated DB passwords come in via the env injection on pod restart — no `config.php` edit needed. **This is the preferred path for credential rotation** — see the corresponding gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow).
+The Clouve image writes `$CFG->dbhost`, `dbname`, `dbuser`, `dbpass` and `wwwroot` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/installer/update-config.sh)), so an edit to those lines doesn't last. Nothing lets the customer change those settings, and a database password changed in MySQL alone stops working at the next start. Rotating the database password is a Clouve support request (the gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow)).
 
 ## Settings that live in the DB, not `config.php`
 
@@ -220,4 +221,4 @@ sudo -u www-data php admin/cli/cfg.php --name=lang
 sudo -u www-data php admin/cli/cfg.php --component=auth_oauth2 --name=...
 ```
 
-[admin/cli/cfg.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/cfg.php) is the right tool for poking config from the CLI — it respects the `config.php` overrides and writes through to the DB cache.
+[admin/cli/cfg.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/cfg.php) is the right tool for poking config from the CLI — it respects the `config.php` overrides and writes through to the DB cache.

@@ -29,7 +29,7 @@ Usage: $(basename "$0") [--muc] [--theme] [--lang] [--js] [--filter] [--other]
 Without flags: purges everything. With one or more flags: targeted purge.
 
 See:
-  https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/purge_caches.php
+  https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/purge_caches.php
 EOF
 }
 
@@ -54,10 +54,11 @@ for arg in "$@"; do
     esac
 done
 
-ssh_opts=(-o StrictHostKeyChecking=accept-new -o BatchMode=no -o ConnectTimeout=10)
+# The two host-key options are written out on each ssh line, where tests/lib/ssh-host-key-check.py reads them.
+ssh_opts=(-o BatchMode=no -o ConnectTimeout=10)
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Purging caches on ${MOODLE_HOST}${flags[*]:+ }${flags[*]:-(all)}..." >&2
 
-if ! SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh "${ssh_opts[@]}" \
+if ! SSHPASS="${CLOUVE_OPS_PASSWORD}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ssh_opts[@]}" \
         "clouve-ops@${MOODLE_HOST}" \
         "sudo -u www-data php /var/www/html/admin/cli/purge_caches.php ${flags[*]}"; then
     echo "ERROR: purge_caches.php returned non-zero" >&2

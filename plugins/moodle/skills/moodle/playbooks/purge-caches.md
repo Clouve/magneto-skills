@@ -22,7 +22,7 @@ When in doubt: purge.
 ### 1. Run the purge
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php'
 ```
 
@@ -45,7 +45,7 @@ If you know which cache is stale and don't want the cold-cache penalty on the re
 Example:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     'sudo -u www-data php /var/www/html/admin/cli/purge_caches.php --theme'
 ```
 

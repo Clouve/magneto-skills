@@ -44,7 +44,7 @@ Environment on the `wordpress` container (all platform-injected):
 | `WORDPRESS_SITE_URL` | The deployment URL — authoritative for `siteurl`/`home` at every boot |
 | `WORDPRESS_SITE_TITLE` | Site title used at first install |
 | `WORDPRESS_ADMIN_USER` / `_EMAIL` / `_PASSWORD` | First-install admin credentials; the env will **not** reflect later manual changes |
-| `WORDPRESS_DEBUG` | `'false'` |
+| `WORDPRESS_DEBUG` | `'false'` in the manifest. The image from release 4.5.5 on takes it out before WordPress starts, so `WP_DEBUG` is off and the agent doesn't see the variable; an older image passes it on, which turns `WP_DEBUG` on ([configuration.md](configuration.md#debug-constants)) |
 
 The container starts as root (the entrypoint needs it); Apache workers run as `www-data`. Everything under `/var/www/html` lives on the `wordpressdata` volume, so wp-content — plugins, themes, uploads — survives pod restarts; core files are refreshed from the image by the official entrypoint when the image version changes (see [upgrade.md](upgrade.md)).
 

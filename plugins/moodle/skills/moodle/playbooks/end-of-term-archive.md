@@ -37,7 +37,7 @@ The right pattern for end-of-term in most schools is **archive + rollover**:
 
 UI bulk path: Site administration → Courses → Manage courses and categories → select category → bulk select → "Hide".
 
-CLI path (uses [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/maintenance.php) is NOT what you want; there's no shipped bulk-visibility CLI):
+CLI path (uses [admin/cli/maintenance.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/maintenance.php) is NOT what you want; there's no shipped bulk-visibility CLI):
 
 ```sql
 -- DRY RUN: count first
@@ -83,14 +83,14 @@ This is per-course. For dozens of courses, plan a maintenance window of an eveni
 
 Default: **course content without user data.** That means activities, resources, settings, but NOT enrolments, submissions, posts, grades, attempts.
 
-The course backup wizard's "Include users" toggle controls this. From CLI, [admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/backup.php) — read its `--help` to see the user-inclusion flags.
+The course backup wizard's "Include users" toggle controls this. From CLI, [admin/cli/backup.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/backup.php) — read its `--help` to see the user-inclusion flags.
 
 ### 6. Back up each source course
 
 ```bash
 mkdir -p /tmp/rollover-mbz
 for course_id in 101 102 103 104 105; do
-  sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
       "sudo -u www-data php /var/www/html/admin/cli/backup.php \
          --courseid=$course_id \
          --destination=/tmp/rollover-mbz/"
@@ -102,7 +102,7 @@ Each course produces an `.mbz` file in `/tmp/rollover-mbz/`. For a school with 2
 Verify:
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} 'ls -la /tmp/rollover-mbz/ | wc -l'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} 'ls -la /tmp/rollover-mbz/ | wc -l'
 ```
 
 ### 7. Restore each into the new category as a new course
@@ -112,7 +112,7 @@ NEXT_CAT_ID=$(MYSQL_PWD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}
     -e "SELECT id FROM mdl_course_categories WHERE name = 'Term 2026-Q1';")
 
 for mbz in /tmp/rollover-mbz/*.mbz; do
-  sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+  SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
       "sudo -u www-data php /var/www/html/admin/cli/restore_backup.php \
          --file=$mbz --categoryid=$NEXT_CAT_ID"
 done
@@ -124,7 +124,7 @@ The restored courses get fresh IDs, fresh `mdl_course.startdate` / `enddate` (yo
 
 This part depends on how the school manages enrolments:
 
-- **Manual enrolment (small school):** Use the UI per-course or via [enrol/manual/cli/](https://github.com/moodle/moodle/tree/v5.2.0/public/enrol/manual/cli).
+- **Manual enrolment (small school):** Use the UI per-course or via [enrol/manual/cli/](https://github.com/moodle/moodle/tree/v5.3.0/public/enrol/manual/cli).
 - **Cohort sync:** Update the cohort definition for the new term; cohort sync (cron task) populates the courses automatically.
 - **External SSO with role-mapping:** The next IdP login provisions the teacher with the right role; nothing to do.
 
@@ -164,7 +164,7 @@ It KEEPS:
 ### 11. Take a backup OF THIS COURSE specifically
 
 ```bash
-sshpass -e ssh clouve-ops@${MOODLE_HOST} \
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST} \
     "sudo -u www-data php /var/www/html/admin/cli/backup.php --courseid=$COURSE_ID --destination=/tmp/pre-reset/"
 ```
 

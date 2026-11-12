@@ -6,7 +6,7 @@ Failure modes seen in the wild and the **first** thing to check for each. Stop a
 
 Order of likelihood:
 
-1. **PHP error log first.** `tail -100 /var/log/apache2/error.log`. The fatal will name a file and a line. Most production 500s map to:
+1. **What the error says.** Apache's error log, where PHP's fatals go, is the container's own output on the Clouve image, and nothing in the pod can read it ([shell-access.md](shell-access.md#the-apache-error-log)). Ask for the exact error text, and follow [playbooks/diagnose-500.md](../playbooks/diagnose-500.md) step 1. The fatal names a file and a line. Most production 500s map to:
    - Recent code change with a syntax error → revert the deploy.
    - DB connection error → check the DB process, network, credentials.
    - File-permission error → `<dataroot>` not writable by `www-data`.
@@ -38,7 +38,7 @@ Order of likelihood:
 
 ## "I see 'rootdirpublic' error" / "Throw moodle_exception"
 
-The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public`. The root `index.php` is a [tripwire](https://github.com/moodle/moodle/blob/v5.2.0/index.php) that throws this exception specifically to catch this misconfiguration. Fix the webserver config.
+The webserver `DocumentRoot` is pointed at `<dirroot>` instead of `<dirroot>/public`. The root `index.php` is a [tripwire](https://github.com/moodle/moodle/blob/v5.3.0/index.php) that throws this exception specifically to catch this misconfiguration. Fix the webserver config.
 
 ## "Some pages work, others 404"
 
@@ -73,7 +73,7 @@ If that's old:
 
 1. **Is cron disabled?** `mdl_config WHERE name='cron_enabled'` (1 = on).
 2. **Is the cron process actually running on the host?**
-   - SSH to the moodle container: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh clouve-ops@${MOODLE_HOST}`
+   - SSH to the moodle container: `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_HOST}`
    - `ps aux | grep cron.php`
    - `cat /etc/cron.d/moodle` or check k8s `CronJob`.
 3. **Is the cron process running but stuck?**
@@ -151,7 +151,7 @@ The plugin's `db/install.xml` declares a column the existing schema doesn't have
 php admin/cli/check_database_schema.php
 ```
 
-[admin/cli/check_database_schema.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/check_database_schema.php) reports schema drift between the install.xml definitions and the live DB. If everything is clean and the install still fails, the plugin doesn't support 5.2 — check its `version.php` `$plugin->requires` value.
+[admin/cli/check_database_schema.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/check_database_schema.php) reports schema drift between the install.xml definitions and the live DB. If everything is clean and the install still fails, the plugin doesn't support this Moodle (5.3 on the Clouve image) — check its `version.php` values `$plugin->requires`, `$plugin->supported` and `$plugin->incompatible`.
 
 ## "Email isn't sending"
 
@@ -175,6 +175,16 @@ php admin/cli/check_database_schema.php
 | 4 | If 404 with path `theme/styles.php/...`, suspect `slasharguments` (see "Some pages work, others 404"). |
 | 5 | If 200 but wrong content, suspect themedesignermode being inadvertently on. Check `mdl_config WHERE name='themedesignermode'`. |
 
+## After the upgrade to 5.3
+
+| Symptom | First thing to check |
+|---|---|
+| The site still runs 5.2 on the 5.3 image: `public/version.php` says `2026042000`, and so does `/var/www/html/clouve/installed/version` | An added `report_aiusage` or `aiprovider_anthropic` newer than 5.3's own copy: the image leaves such a site on its old code. See [changes-in-5.3.md](changes-in-5.3.md#a-site-the-image-doesnt-upgrade). |
+| "Site is being upgraded, please retry later" | A start was cut off while Moodle upgraded. The next start clears Moodle's upgrade lock and runs the upgrade again; otherwise the lock expires within about five minutes. |
+| The site or a course looks different, or a block moved | The Classic theme is gone and Moodle moved the site to Boost. See [changes-in-5.3.md](changes-in-5.3.md#the-classic-theme-is-gone). |
+| A plugin's pages are gone | The image held the plugin back in `/var/www/html/clouve/upgrade-stash/<UTC time>/`. See [playbooks/install-plugin.md](../playbooks/install-plugin.md#putting-back-a-held-back-plugin). |
+| A new warning in the Security report, "Security message notifications" | New in 5.3 for upgraded sites. See [security.md](security.md#security-report). |
+
 ## "Magneto Agent can't reach the moodle container"
 
 Out of skill scope — that's a Clouve platform / pod networking issue, not a Moodle issue. Confirm with `curl -v http://${MOODLE_HOST}/` from Magneto Agent. If 0 bytes / connection refused / DNS fail, it's not Moodle.
@@ -186,4 +196,4 @@ Out of skill scope — that's a Clouve platform / pod networking issue, not a Mo
 - Anything where the diagnosis points outside the moodle / moodle-mysql containers (cluster networking, ingress, cert-manager, namespace policies).
 - Any data loss scenario where a forensic snapshot is needed of state outside `<dataroot>` and the DB.
 
-Surface enough detail in chat that the user can paste it into a support ticket — version, release, error message, last 50 lines of the PHP error log, the scope of users affected. Do NOT paste secrets (DB password, Anthropic key, user emails).
+Surface enough detail in chat that the user can paste it into a support ticket — version, release, error message, the time it happened (Clouve support reads the container log for that time), the scope of users affected. Do NOT paste secrets (DB password, Anthropic key, user emails).

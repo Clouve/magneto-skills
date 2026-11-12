@@ -4,7 +4,7 @@ Modern Moodle is **cron-driven** — almost every asynchronous behaviour (email 
 
 ## The minute cron
 
-The recommended frequency since Moodle 3.0 is **every 60 seconds**. The script is [admin/cli/cron.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/cron.php).
+The recommended frequency since Moodle 3.0 is **every 60 seconds**. The script is [admin/cli/cron.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/cron.php).
 
 ```cron
 # /etc/cron.d/moodle
@@ -17,7 +17,7 @@ In the Magneto Moodle pod, cron is launched by the entrypoint of the moodle cont
 
 ## CLI flags
 
-From [admin/cli/cron.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/cron.php) `cli_get_params(...)`:
+From [admin/cli/cron.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/cron.php) `cli_get_params(...)`:
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -38,7 +38,7 @@ Two kinds of tasks live in the scheduler:
 | **Scheduled** | `db/tasks.php` of any plugin | On a cron-like schedule (minute/hour/day/dayofweek/month) | `core\task\file_temp_cleanup_task` runs daily |
 | **Adhoc** | Queued in code via `\core\task\manager::queue_adhoc_task(...)` | Once, ASAP, then dropped from queue | Course backup queued by user action |
 
-The framework lives in [public/lib/classes/task/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/classes/task). Key entry points:
+The framework lives in [public/lib/classes/task/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/classes/task). Key entry points:
 
 | Class / file | Role |
 |---|---|
@@ -59,12 +59,13 @@ sudo -u www-data php admin/cli/scheduled_task.php --list
 
 # Run a single named scheduled task immediately (ignoring schedule):
 sudo -u www-data php admin/cli/scheduled_task.php --execute='\core\task\file_temp_cleanup_task'
+# 5.3 adds -e as the short form of --execute, and --execute with no task runs every due task.
 
 # Show queued adhoc tasks:
 sudo -u www-data php admin/cli/adhoc_task.php --showsql --execute   # runs them all
 ```
 
-[admin/cli/scheduled_task.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/scheduled_task.php) and [admin/cli/adhoc_task.php](https://github.com/moodle/moodle/blob/v5.2.0/admin/cli/adhoc_task.php) are the surgical tools. `admin/cli/cron.php` is the dispatcher.
+[admin/cli/scheduled_task.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/scheduled_task.php) and [admin/cli/adhoc_task.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/adhoc_task.php) are the surgical tools. `admin/cli/cron.php` is the dispatcher.
 
 ## Per-task config in `mdl_task_scheduled` and `mdl_task_adhoc`
 
@@ -74,7 +75,7 @@ Adhoc tasks live entirely in `mdl_task_adhoc` until executed; one row per pendin
 
 ## Locking
 
-Cron's safety story rests on locks. By default Moodle uses [public/lib/classes/lock/file_lock_factory.php](https://github.com/moodle/moodle/blob/v5.2.0/public/lib/classes/lock/file_lock_factory.php) which writes lockfiles under `<dataroot>/lock/`. On a single node this is fine; **on a cluster, the lock dir MUST be a shared volume** (NFS, RWX PVC) — otherwise two nodes both grab the same lock and run the same task.
+Cron's safety story rests on locks. By default Moodle uses [public/lib/classes/lock/file_lock_factory.php](https://github.com/moodle/moodle/blob/v5.3.0/public/lib/classes/lock/file_lock_factory.php) which writes lockfiles under `<dataroot>/lock/`. On a single node this is fine; **on a cluster, the lock dir MUST be a shared volume** (NFS, RWX PVC) — otherwise two nodes both grab the same lock and run the same task.
 
 Alternatives selected via `$CFG->lock_factory`:
 

@@ -67,8 +67,8 @@
 #   NEXTCLOUD_DB_HOST       the database's address for mysql
 #   NEXTCLOUD_DB_NAME, NEXTCLOUD_DB_USER
 #   NEXTCLOUD_MARIADB_HOST  the database container's host name for ssh; defaults to NEXTCLOUD_DB_HOST. It is the
-#                           only variable read from the database container: its PID 1 runs as the mysql user,
-#                           and root can't read that process's environment.
+#                           only variable read from the database container. The agent has it on every image; the
+#                           others only from the 4.5.5 image on, where tini, not mariadbd, is that container's PID 1.
 #   NEXTCLOUD_DB_PASSWORD and CLOUVE_OPS_PASSWORD
 #                           the passwords. A current agent keeps them out of the environment; the loader lines
 #                           below fetch them then. The database password goes to mysql in MYSQL_PWD and

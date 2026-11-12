@@ -1,27 +1,27 @@
 # Stack & Runtime
 
-Moodle 5.2.0's declared requirements come from [public/admin/environment.xml](https://github.com/moodle/moodle/blob/v5.2.0/public/admin/environment.xml) (the `<MOODLE version="5.2">` block, lines 5111–) and [public/version.php](https://github.com/moodle/moodle/blob/v5.2.0/public/version.php). The Clouve image at [apps/moodle/image/Dockerfile](../../../../apps/moodle/image/Dockerfile) pins concrete versions that satisfy them.
+Moodle 5.3.0's declared requirements come from [public/admin/environment.xml](https://github.com/moodle/moodle/blob/v5.3.0/public/admin/environment.xml) (the `<MOODLE version="5.3">` block, lines 5316–) and [public/version.php](https://github.com/moodle/moodle/blob/v5.3.0/public/version.php). The Clouve image at [apps/moodle/image/Dockerfile](../../../../apps/moodle/image/Dockerfile) pins concrete versions that satisfy them.
 
 ## Version metadata
 
 From `public/version.php`:
 
-| Constant | Value |
-|---|---|
-| `$version` | `2026042000.00` (branch date 2026-04-20) |
-| `$release` | `'5.2 (Build: 20260420)'` |
-| `$branch` | `'502'` |
-| `$maturity` | `MATURITY_STABLE` |
+| Constant | 5.3 (the Clouve image) | 5.2 |
+|---|---|---|
+| `$version` | `2026100500.00` (build 2026-10-05) | `2026042000.00` (build 2026-04-20) |
+| `$release` | `'5.3 (Build: 20261005)'` | `'5.2 (Build: 20260420)'` |
+| `$branch` | `'503'` | `'502'` |
+| `$maturity` | `MATURITY_STABLE` | `MATURITY_STABLE` |
 
-`environment.xml` declares `<MOODLE version="5.2" requires="4.4">` — meaning the source instance MUST be on **Moodle 4.4 or later** before upgrading to 5.2. Upgrading from 4.3 or older fails the `requires` check.
+`environment.xml` declares `<MOODLE version="5.3" requires="4.4">`, as 5.2's block did: the source instance MUST be on **Moodle 4.4 or later** before upgrading to 5.2 or 5.3. Upgrading from 4.3 or older fails the `requires` check.
 
 ## PHP
 
-| Item | 5.2 requires | Notes |
+| Item | 5.2 and 5.3 require | Notes |
 |---|---|---|
-| PHP | `>= 8.3.0` | `<PHP version="8.3.0" level="required" />`. PHP 8.4 was not yet a target at branch time. |
-| Extensions (required) | `iconv`, `mbstring`, `curl`, `openssl`, `ctype`, `zip`, `zlib`, `gd`, `simplexml`, `spl`, `pcre`, `dom` | All marked `level="required"` |
-| Extensions (recommended) | `tokenizer`, `soap` | `level="optional"` with `ON_CHECK` recommendation |
+| PHP | `>= 8.3.0` | `<PHP version="8.3.0" level="required" />` in both blocks. The Clouve image runs PHP 8.3. |
+| Extensions (required) | `iconv`, `mbstring`, `curl`, `openssl`, `ctype`, `zip`, `zlib`, `gd`, `simplexml`, `spl`, `pcre`, `dom`, `xml`, `xmlreader`, `intl`, `json`, `hash`, `fileinfo`, `sodium`, `filter` | All marked `level="required"`; the list is the same in 5.2 and 5.3 |
+| Extensions (recommended) | `tokenizer`, `soap`, `exif` | `level="optional"` |
 | PCRE Unicode | optional | `<PCREUNICODE level="optional" />` — recommended for full UTF-8 |
 
 The Clouve image inherits `php:8.3-apache`, which includes all required extensions either built-in or via the standard `docker-php-ext-install` invocations in [apps/moodle/image/Dockerfile](../../../../apps/moodle/image/Dockerfile).
@@ -40,29 +40,29 @@ The installer's environment check enforces these; if you `php -i | grep <key>` a
 
 ## Databases
 
-Moodle 5.2 supports the following DB engines — declared in `environment.xml` and implemented by the drivers in [public/lib/dml/](https://github.com/moodle/moodle/tree/v5.2.0/public/lib/dml).
+Moodle 5.3 supports the following DB engines — declared in `environment.xml` and implemented by the drivers in [public/lib/dml/](https://github.com/moodle/moodle/tree/v5.3.0/public/lib/dml).
 
-| Engine | Minimum version | Driver file | `dbtype` value |
-|---|---|---|---|
-| MariaDB | 10.11.0 | `mariadb_native_moodle_database.php` | `'mariadb'` |
-| MySQL | 8.4 | `mysqli_native_moodle_database.php` | `'mysqli'` |
-| Aurora MySQL | 8.0 | `auroramysql_native_moodle_database.php` | `'auroramysql'` |
-| PostgreSQL | 16 | `pgsql_native_moodle_database.php` | `'pgsql'` |
-| MS SQL Server | 15.0 | `sqlsrv_native_moodle_database.php` | `'sqlsrv'` |
+| Engine | Minimum on 5.3 | Minimum on 5.2 | Driver file | `dbtype` value |
+|---|---|---|---|---|
+| MariaDB | **11.4.0** | 10.11.0 | `mariadb_native_moodle_database.php` | `'mariadb'` |
+| MySQL | 8.4 | 8.4 | `mysqli_native_moodle_database.php` | `'mysqli'` |
+| Aurora MySQL | 8.0 | 8.0 | `auroramysql_native_moodle_database.php` | `'auroramysql'` |
+| PostgreSQL | **17** | 16 | `pgsql_native_moodle_database.php` | `'pgsql'` |
+| MS SQL Server | 15.0 | 15.0 | `sqlsrv_native_moodle_database.php` | `'sqlsrv'` |
 
-**Oracle is dropped in 5.2.** If you find a `dbtype = 'oci'` in a config.php this site is on Moodle ≤ 5.1 and the upgrade to 5.2 will fail until the data is migrated to one of the supported engines.
+**Oracle was dropped in 5.2.** If you find a `dbtype = 'oci'` in a config.php, the site is on Moodle 5.1 or older, and the upgrade to 5.2 or 5.3 fails until the data is migrated to one of the supported engines.
 
 ### Clouve packaging
 
-The Magneto-shipped image uses **MariaDB**, see [apps/moodle/docker-compose.yml](../../../../apps/moodle/docker-compose.yml). Confirm with `compgen -e | grep -i moodle_db` — the username and DB name are usually `moodle`. The actual MariaDB version is shipped in [apps/moodle/image/mysql/Dockerfile](../../../../apps/moodle/image/mysql/Dockerfile).
+The Magneto-shipped image uses **MySQL 8.4** (`FROM mysql:8.4` in [apps/moodle/image/mysql/Dockerfile](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/mysql/Dockerfile)), so the higher MariaDB and PostgreSQL floors of 5.3 don't touch it. Confirm with `compgen -e | grep -i moodle_db` — the username and DB name are usually `moodle`.
 
-If the user asks about migrating to Postgres, that is a one-way data migration and a different skill — flag the [Migrating to a different database upstream guide](https://docs.moodle.org/502/en/Converting_your_MySQL_database_to_UTF8mb4) and surface it as a separate engagement.
+If the user asks about migrating to Postgres, that is a one-way data migration and a different skill — flag the [Migrating to a different database upstream guide](https://docs.moodle.org/503/en/Converting_your_MySQL_database_to_UTF8mb4) and surface it as a separate engagement.
 
 ## Web server / SAPI
 
 Moodle does not ship a preferred SAPI in environment.xml — both Apache (mod_php or php-fpm) and nginx (php-fpm) are supported. The Clouve image ships **Apache 2.4 + mod_php** on port 80 (`php:8.3-apache`).
 
-The web server's `DocumentRoot` MUST point at `<dirroot>/public/`, **not** at `<dirroot>`. The repo-root [public/index.php](https://github.com/moodle/moodle/blob/v5.2.0/public/index.php) is the entry point; the root [index.php](https://github.com/moodle/moodle/blob/v5.2.0/index.php) is a tripwire that throws `moodle_exception('rootdirpublic', 'error')`. See [architecture.md](architecture.md) for the full layout.
+The web server's `DocumentRoot` MUST point at `<dirroot>/public/`, **not** at `<dirroot>`. The repo-root [public/index.php](https://github.com/moodle/moodle/blob/v5.3.0/public/index.php) is the entry point; the root [index.php](https://github.com/moodle/moodle/blob/v5.3.0/index.php) is a tripwire that throws `moodle_exception('rootdirpublic', 'error')`. See [architecture.md](architecture.md) for the full layout.
 
 ## OS-level packages
 
@@ -80,7 +80,7 @@ Moodle delegates these to the operator. The packages most commonly needed by Moo
 
 ## Filesystem layout (inside the `moodle` container)
 
-Moodle 5.2 is structured around a public/non-public split. Memorize this — it is the load-bearing change in 5.2.
+Moodle 5.2 and 5.3 are structured around a public/non-public split. Memorize this: since 5.2 the web server must serve `public/` and nothing above it.
 
 ```
 /var/www/html/                       ← $CFG->dirroot, project root, on a moodledata volume
@@ -116,7 +116,7 @@ Moodle 5.2 is structured around a public/non-public split. Memorize this — it 
 
 ### `dirroot` semantics
 
-The root [lib/setup.php](https://github.com/moodle/moodle/blob/v5.2.0/lib/setup.php) is a migration helper:
+The root [lib/setup.php](https://github.com/moodle/moodle/blob/v5.3.0/lib/setup.php) is a migration helper:
 
 ```php
 if (property_exists($CFG, 'dirroot') && !str_ends_with($CFG->dirroot, '/public')) {
@@ -129,7 +129,7 @@ This means: `$CFG->dirroot` may be set either to the project root OR to `<root>/
 
 ### `dataroot` is a security boundary
 
-`$CFG->dataroot` MUST be **outside** the webroot. The directory holds user-uploaded files keyed by content hash; serving it from a URL would bypass Moodle's permission checks. The default examples in [config-dist.php](https://github.com/moodle/moodle/blob/v5.2.0/config-dist.php) (line ~191) use `/home/example/moodledata` precisely for this reason. Never `chmod` `moodledata/` into `public/` "for convenience."
+`$CFG->dataroot` MUST be **outside** the webroot. The directory holds user-uploaded files keyed by content hash; serving it from a URL would bypass Moodle's permission checks. The default examples in [config-dist.php](https://github.com/moodle/moodle/blob/v5.3.0/config-dist.php) (line ~191) use `/home/example/moodledata` precisely for this reason. Never `chmod` `moodledata/` into `public/` "for convenience."
 
 ### Required permissions
 

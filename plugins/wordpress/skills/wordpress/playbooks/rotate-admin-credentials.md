@@ -51,10 +51,10 @@ The script looks the account up by its login and changes it by its ID, as `www-d
 It prints one line, for example:
 
 ```
-Saved the temporary password for admin to wordpress-passwords/admin-20261102-221530.txt in the Files pane. WordPress accepted it at sign-in.
+Saved the temporary password for user ID 1 to wordpress-passwords/1-20261102-221530.txt in the Files pane. WordPress accepted it at sign-in.
 ```
 
-The file is `~/wordpress-passwords/<login>-<UTC time>.txt`, mode 600. Never open, print or copy it yourself. If the script exits 2, read its message. When nothing changed it has deleted the file again; when the password may be set it keeps the file and says so. If it says the shell or wp-cli failed and nothing changed, use the fallback below.
+The file is `~/wordpress-passwords/<user ID>-<UTC time>.txt`, mode 600. Its name and the line give the account's ID, not the login, which is often an email address; the login is inside the file, for the hand-over. Never open, print or copy it yourself. If the script exits 2, read its message. When nothing changed it has deleted the file again; when the password may be set it keeps the file and says so. If it says the shell or wp-cli failed and nothing changed, use the fallback below.
 
 ## Step 2 (fallback): MD5 straight into the DB [TCP-mysql]
 
@@ -84,11 +84,11 @@ MYSQL_PWD="${WORDPRESS_DB_PASSWORD:-$(clv-secret WORDPRESS_DB_PASSWORD)}" mysql 
   "SELECT user_login, LEFT(user_pass,4) FROM wp_users WHERE user_login='<the-login>';"
 ```
 
-If the line says "Couldn't confirm the sign-in", that isn't proof of failure. The check signs in at the WordPress container itself, over plain HTTP inside the cluster, so the password never leaves it. When `WORDPRESS_SITE_URL` is https, the request says it came over HTTPS (`X-Forwarded-Proto: https`), as the site's ingress does with every request, so WordPress checks the password instead of redirecting first. An HTTP `200` means the login form came back: WordPress, or a security plugin in front of it, can turn down a sign-in that a script makes. A redirect without a sign-in comes from a plugin that hides `wp-login.php`, or from `FORCE_SSL_ADMIN` when the check couldn't say it came over HTTPS (`WORDPRESS_SITE_URL` isn't https here) or the site's `wp-config.php` ignores that header: both redirect before WordPress checks the password, and the line names the `FORCE_SSL_ADMIN` case that fits. When there was no answer, the line says why: the WordPress host doesn't resolve from the agent, the connection was refused, or it timed out. The line itself means the stored password changed, so have the user try the new one in a private browser window before you conclude it failed.
+If the line says "Couldn't confirm the sign-in", that isn't proof of failure. The check signs in at the WordPress container itself, over plain HTTP inside the cluster, so the password never leaves it. When `WORDPRESS_SITE_URL` is https, the request says it came over HTTPS (`X-Forwarded-Proto: https`) and names the site's own host (`Host`), as the site's ingress does with every request, so WordPress checks the password instead of redirecting first. The connection still goes to the container, and the check follows no redirect. An HTTP `200` means the login form came back: WordPress, or a security plugin in front of it, can turn down a sign-in that a script makes. A redirect without a sign-in comes from a plugin that hides `wp-login.php`, or from `FORCE_SSL_ADMIN` when the check couldn't say it came over HTTPS (`WORDPRESS_SITE_URL` isn't https here) or the site's `wp-config.php` ignores that header: both redirect before WordPress checks the password, and the line names the `FORCE_SSL_ADMIN` case that fits. When there was no answer, the line says why: the WordPress host doesn't resolve from the agent, the connection was refused, or it timed out. The line itself means the stored password changed, so have the user try the new one in a private browser window before you conclude it failed.
 
 ## Step 4: Hand off outside the chat
 
-In the chat, say only where the password is: "The temporary password for <login> is in `wordpress-passwords/<file>` in the Files pane." Then the admin, not you:
+In the chat, say only where the password is: "The temporary password for user ID <ID> is in `wordpress-passwords/<file>` in the Files pane." Then the admin, not you:
 
 - passes the password on by voice, secure message or a password manager entry, never by chat or plain email;
 - tells the person to change it after they sign in;
