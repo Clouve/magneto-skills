@@ -1,0 +1,37 @@
+id	related_id	class	type/scale	name	relevance	text	help	language	validation	mandatory	other	default	same_default	min_num_value_n	max_num_value_n
+		S		sid		246810									
+		S		language		en									
+		S		format		G									
+		SL		surveyls_title		Customer feedback		en							
+		SL		surveyls_description		A short survey about your last visit.		en							
+		SL		surveyls_welcometext		Thank you for taking a few minutes to tell us about your last visit. There are 11 questions, and most take one click.		en							
+		SL		surveyls_endtext		Thank you. Your answers help us do better.		en							
+1		G	1	About your visit	1			en							
+1		Q	D	visitdate	1	When did you last visit us?		en		N	N		0		
+2		Q	L	howheard	1	How did you first hear about us?		en		Y	Y		0		
+2		A	0	A1		From a friend or colleague		en							
+2		A	0	A2		A web search		en							
+2		A	0	A3		Social media		en							
+2		A	0	A4		An advertisement		en							
+3		Q	M	services	1	Which of our services did you use?	Tick all that apply.	en		N	N		0		
+101		SQ		SQ001	1	Advice		en							
+102		SQ		SQ002	1	Repairs		en							
+103		SQ		SQ003	1	Sales		en							
+2		G	2	Your experience	1			en							
+4		Q	5	overall	1	Overall, how satisfied are you with your visit?	1 is very dissatisfied, 5 is very satisfied.	en		Y	N		0		
+5		Q	F	ratings	1	How would you rate each of these?		en		N	N		0		
+201		SQ		SQ001	1	Our staff		en							
+202		SQ		SQ002	1	How quickly we helped you		en							
+203		SQ		SQ003	1	Value for money		en							
+5		A	0	1		Poor		en							
+5		A	0	2		Fair		en							
+5		A	0	3		Good		en							
+5		A	0	4		Very good		en							
+5		A	0	5		Excellent		en							
+6		Q	Y	recommend	1	Would you recommend us to a friend?		en		Y	N		0		
+7		Q	T	whynot	recommend == "N"	What would have to change for you to recommend us?		en		N	N		0		
+8		Q	N	score	1	From 0 to 10, how likely are you to come back?	0 is not at all likely, 10 is certain.	en		N	N		0	0	10
+3		G	3	Anything else	1			en							
+9		Q	T	comments	1	Is there anything else you would like to tell us?		en		N	N		0		
+10		Q	Y	contactok	1	May we contact you about your answers?		en		N	N		0		
+11		Q	S	email	contactok == "Y"	Your email address		en		N	N		0		

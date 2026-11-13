@@ -1,0 +1,18 @@
+id	related_id	class	type/scale	name	relevance	text	help	language	validation	mandatory	other	default	same_default
+		S		sid		987002							
+		S		language		en							
+		S		format		G							
+		S		anonymized		N							
+		SL		surveyls_title		Hand-authored TSV draft		en					
+		SL		surveyls_welcometext		Welcome to the draft.		en					
+1		G	1	About you	1	Group description		en					
+1		Q	S	fullname	1	What is your name?	Help text	en		Y	N		0
+1		A	0	A1		Stray option		en					
+2		Q	L	rating	1	How would you rate us?		en		Y	Y		0
+2		A	0	A1		Good		en					
+2		A	0	A2		Bad		en					
+3		Q	M	channels	rating == "A1"	Which channels do you use?		en		N	N		0
+301		SQ		SQ001	1	Email		en					
+302		SQ		SQ002	1	Phone		en					
+2		G	2	Feedback	1			en					
+4		Q	T	comments	1	Anything else?		en		N	N		0

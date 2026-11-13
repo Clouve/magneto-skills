@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <metadata>
+        <name>SuiteCRMIntegration</name>
+        <type>plugin</type>
+        <creationDate>2026-11-12</creationDate>
+        <lastUpdate>2026-11-12</lastUpdate>
+        <author>The limesurvey skill's tests</author>
+        <authorUrl>https://example.test</authorUrl>
+        <authorEmail>tests@example.test</authorEmail>
+        <version>0.0.1</version>
+        <license>MIT</license>
+        <description><![CDATA[A stand-in for Clouve's SuiteCRM plugin, for the limesurvey skill's tests only. It talks to no SuiteCRM.]]></description>
+    </metadata>
+
+    <compatibility>
+        <version>7.0</version>
+    </compatibility>
+
+    <updaters disabled="disabled">
+    </updaters>
+</config>

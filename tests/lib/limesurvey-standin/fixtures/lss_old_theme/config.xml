@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <metadata>
+        <name>lss_old_theme</name>
+        <title>Skill test theme</title>
+        <type>theme</type>
+        <creationDate>2026-11-12</creationDate>
+        <author>limesurvey skill tests</author>
+        <authorEmail>tests@example.test</authorEmail>
+        <authorUrl>https://example.test</authorUrl>
+        <copyright>none</copyright>
+        <license>MIT</license>
+        <version>1.0</version>
+        <apiVersion>3</apiVersion>
+        <description><![CDATA[Test fixture]]></description>
+        <extends>fruity_twentythree</extends>
+    </metadata>
+    <compatibility>
+        <version>5.0</version>
+    </compatibility>
+    <files>
+        <css>
+            <add>css/custom.css</add>
+        </css>
+        <js>
+        </js>
+        <print_css>
+        </print_css>
+    </files>
+    <options>
+    </options>
+</config>
