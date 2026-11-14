@@ -316,5 +316,20 @@ else
   pass "the open step waits for the database list to change, not for /web/health"
 fi
 
+# --- A new database password (release 4.5.6, #109) ---------------------------------------------
+# A deployment from a listing version with the rotation has a "Database password" section on its Settings tab, and
+# one from an earlier version doesn't (the skills reach both). So the text names both: the Rotate database password
+# action where the Settings tab shows it, and Clouve support otherwise.
+db_password_both() {
+  local file="$SKILL_DIR/$1"
+  if grep -qF "admins see Database password on the deployment's Settings tab" "$file" &&
+     grep -qF "Otherwise Clouve support can do it for you" "$file"; then
+    pass "$1 names the Rotate database password action where it's shown, and Clouve support otherwise"
+  else
+    fail "$1 names the Rotate database password action where it's shown, and Clouve support otherwise"
+  fi
+}
+db_password_both reference/stack-and-runtime.md
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All odoo channel-text checks passed."; else exit 1; fi

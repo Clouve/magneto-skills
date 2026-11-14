@@ -22,7 +22,7 @@ On Kubernetes the containers are named `tkt-<id>-limesurvey` and so on. Always u
 
 Files worth knowing:
 
-- `application/config/config.php`: the database settings, the public address (`publicurl`), `debug`. It holds the database password. Never print it.
+- `application/config/config.php`: the database settings, the public address (`publicurl`), `debug`. It holds the database password. Never print it. The image writes the database settings from the deployment's at every start. For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you. It sets a new password in the database and in the deployment's settings, and restarts LimeSurvey and the AI Assistant (this session ends), so LimeSurvey is down for a minute or two.
 - `application/config/security.php`: the encryption keys. Never print, move, edit or delete it ([backup-restore.md](backup-restore.md#why-securityphp-matters)).
 - `application/config/allowed_hosts.php`: the host names LimeSurvey answers its admin pages for.
 - `application/config/version.php`: LimeSurvey's version, build and the database version the code needs.

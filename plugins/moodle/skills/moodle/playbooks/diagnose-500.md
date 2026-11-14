@@ -109,7 +109,7 @@ PGPASSWORD="${MOODLE_DB_PASSWORD:-$(clv-secret MOODLE_DB_PASSWORD)}" psql -h "$M
 If that fails:
 - Is `mysqld` running? `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST} 'pgrep -ax mysqld'`. If ssh itself is refused or times out, the database container is down or starting again. The user has no restart button, so that's a Clouve support ticket, with the time it started.
 - Out of disk on the DB volume? `SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null clouve-ops@${MOODLE_DB_HOST} 'df -h'`.
-- Did the database password stop matching? The image writes `config.php`'s database lines from the deployment's settings at every start, so a password changed in MySQL alone stops working. Only Clouve support can change those settings ([reference/configuration.md](../reference/configuration.md)).
+- Did the database password stop matching? The image writes `config.php`'s database lines from the deployment's settings at every start, so a password changed in MySQL alone stops working. For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you ([reference/configuration.md](../reference/configuration.md)).
 
 If `SELECT 1` succeeds but Moodle still says it can't connect:
 - Permissions on `<dirroot>/config.php` (must be readable by `www-data`).

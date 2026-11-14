@@ -36,7 +36,7 @@ The image already writes `php_value max_input_vars 8000` there — the user can 
 
 **First check.** Look at `$DB_PASSWORD`. Does it contain `/` or `&`? The image's `update-config.sh` escapes these before the sed, but earlier versions had a bug there. Double-check with the current script at [apps/gibbon/image/installer/update-config.sh](../../image/installer/update-config.sh).
 
-**Fix.** Restore `config.php` from the backup to get Gibbon back ([playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md)). The password comes from the deployment's settings, which only Clouve support can change: if it has a `'` or a `\` in it, ask Clouve support for one of letters and digits.
+**Fix.** Restore `config.php` from the backup to get Gibbon back ([playbooks/rollback-from-backup.md](../playbooks/rollback-from-backup.md)). The password comes from the deployment's settings. If it has a `'` or a `\` in it, it needs a new one of letters and digits: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit) (it makes one of letters and digits). Otherwise Clouve support can do it for you.
 
 ## 5. `gibbonSetting(version)` disagrees with `version.php`
 

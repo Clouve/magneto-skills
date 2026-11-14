@@ -3,7 +3,7 @@
 Three distinct things that can be "rotated" here, with very different procedures:
 
 1. **Gibbon admin user password** — the `GIBBON_PASSWORD` the tenant uses to log into Gibbon's UI as the first admin.
-2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`. Only Clouve support rotates it (section 2).
+2. **Gibbon DB credentials** — the `DB_PASSWORD` Gibbon uses to connect to `gibbon-mysql`. If your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you (section 2).
 3. **The AI Assistant's access key**: Clouve manages it, one key per deployment. You don't rotate it from here (see section 3).
 
 Pick the right one before doing anything.
@@ -23,9 +23,11 @@ If they're locked out (forgot password, no mailer configured):
 
 **Refuse to help if:** the user asking for the password reset can't prove they're the tenant admin (e.g. they're saying "my colleague is locked out, can you change his password for me?"). That's out-of-band identity verification, not Claude's call.
 
-## 2. The Gibbon DB password: Clouve support only
+## 2. The Gibbon DB password: the Rotate action, or Clouve support
 
-Neither you nor the customer can rotate it. The password is the deployment's `DB_PASSWORD`, a secret Clouve generates, and the customer's Clouve dashboard has no control that changes it. The image writes it into `config.php` at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/gibbon/image/installer/update-config.sh)), so a password changed in MySQL alone stops Gibbon at the next start, and one changed in `config.php` alone is put back. If the customer thinks it has leaked, they ask Clouve support.
+You can't rotate it from here. The password is the deployment's `DB_PASSWORD`, a secret Clouve generates. The image writes it into `config.php` at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/gibbon/image/installer/update-config.sh)), so a password changed in MySQL alone stops Gibbon at the next start, and one changed in `config.php` alone is put back.
+
+When the customer wants a new one (it may have leaked, or their policy asks for it): if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you. It sets a new password in the database and in the deployment's settings, and restarts Gibbon and the AI Assistant (this session ends), so Gibbon is down for a minute or two. Nobody sees the new password, and you read it again with `clv-secret GIBBON_DB_PASSWORD` after the restart.
 
 ### Do NOT
 

@@ -2,7 +2,7 @@
 
 Upgrading Moodle means: replace the codebase, run [admin/cli/upgrade.php](https://github.com/moodle/moodle/blob/v5.3.0/admin/cli/upgrade.php), purge caches. The script reconciles the schema and seeds new config rows on every plugin's `db/install.xml` and `db/upgrade.php`.
 
-On Clouve the image does all three by itself: see [The upgrade on Clouve](#the-upgrade-on-clouve) below.
+On Clouve the image does all three by itself: see [The upgrade on Clouve](#the-upgrade-on-clouve) below. Don't edit files in `vendor/` in place. At each start the image puts its own libraries there only while the package list and every package file still match what Clouve installed, so a site whose `vendor/` was edited stays on the old libraries (see the app's README, "The PHP libraries on an installed site").
 
 ## The version invariant
 

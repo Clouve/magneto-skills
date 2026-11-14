@@ -1,6 +1,6 @@
 {
   "name": "limesurvey",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Safely run a LimeSurvey 7 survey site on Clouve over the clouve-ops SSH channel. It drafts surveys from a plain description and leaves them inactive for review, manages admin accounts, permissions and participant lists, sends invitations and reminders only after a yes, exports and summarizes responses, checks email settings, registers themes and plugins, backs up, restores and diagnoses. Use when the user runs the Clouve LimeSurvey app or the survey side of the Customer Kit, or mentions \"LimeSurvey\", surveys, questionnaires, participants, access codes, invitations, responses, `.lss` or `.lsa` files, RemoteControl, `console.php` or `lime_*` tables. Do not use for SuiteCRM itself, for other survey tools, or for generic PHP, Apache or MySQL questions that aren't tied to a LimeSurvey instance.",
   "author": {
     "name": "Clouve",

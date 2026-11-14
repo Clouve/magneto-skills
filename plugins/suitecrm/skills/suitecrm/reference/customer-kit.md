@@ -39,7 +39,7 @@ When the link breaks, SuiteCRM shows nothing. The only sign on this side is that
 | The client "LimeSurvey Integration" was deleted or edited | "Initialize OAuth2" in the plugin's settings in LimeSurvey makes the client again. Nothing on this side repairs the row, and nobody writes it by hand | The `limesurvey` skill |
 | A restore brought back an older `oauth2clients` table | A client the plugin made after that backup is gone. "Initialize OAuth2" in the plugin's settings makes a new one | The `limesurvey` skill |
 | The key pair is missing, or its two halves no longer match | Token requests then fail for every API client (reasoned from how tokens are signed, not tested). This goes to Clouve support. A full restore of a backup that holds the pair also brings it back, together with everything else in that backup | Clouve support |
-| The database password was rotated | The image writes the new password into both apps' settings at their next start, which the assistant can't trigger | Clouve support |
+| The database password was rotated | The image writes the new password into both apps' settings at their next start, which the assistant can't trigger. The Rotate database password action restarts both apps itself | Nobody: it heals at that restart. For a new password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you |
 
 Two rules follow for this skill in a Customer Kit:
 

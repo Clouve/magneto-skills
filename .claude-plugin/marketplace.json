@@ -23,7 +23,7 @@
       "name": "gibbon",
       "source": "./plugins/gibbon",
       "description": "Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, adding people (staff, students, parents), hardening, and diagnosing 500s. Use when the user is running this app, mentions \"Gibbon\", wants to add a student, teacher or parent to the school, or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "category": "DevOps",
       "tags": ["devops", "school-management", "gibbon", "php", "mysql"],
       "author": {
@@ -35,7 +35,7 @@
       "name": "limesurvey",
       "source": "./plugins/limesurvey",
       "description": "Safely run a LimeSurvey 7 survey site on Clouve over the clouve-ops SSH channel. It drafts surveys from a plain description and leaves them inactive for review, manages admin accounts, permissions and participant lists, sends invitations and reminders only after a yes, exports and summarizes responses, checks email settings, registers themes and plugins, backs up, restores and diagnoses. Use when the user runs the Clouve LimeSurvey app or the survey side of the Customer Kit, or mentions \"LimeSurvey\", surveys, questionnaires, participants, access codes, invitations, responses, `.lss` or `.lsa` files, RemoteControl, `console.php` or `lime_*` tables. Do not use for SuiteCRM itself, for other survey tools, or for generic PHP, Apache or MySQL questions that aren't tied to a LimeSurvey instance.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "DevOps",
       "tags": ["devops", "surveys", "limesurvey", "php", "mysql"],
       "author": {
@@ -59,7 +59,7 @@
       "name": "moodle",
       "source": "./plugins/moodle",
       "description": "Safely operate a Moodle 5.3.x (or 5.2.x) LMS install — upgrades, plugin installs, cron, MUC purge, backups and restores, maintenance mode, hardening, and diagnosing 500s / slow pages / broken file uploads. Use when the user is running a Moodle instance, mentions \"Moodle\", `.mbz`, `moodledata`, MUC, `mdl_*` tables, `admin/cli/`, or asks about `config.php`, `wwwroot`, `dataroot`, scheduled tasks, or LMS deployment patterns. Do not use for generic PHP/Apache/MySQL questions that are not tied to a Moodle instance.",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "category": "DevOps",
       "tags": ["devops", "lms", "moodle", "php", "mysql"],
       "author": {
@@ -71,7 +71,7 @@
       "name": "nextcloud",
       "source": "./plugins/nextcloud",
       "description": "Safely run a Nextcloud 35 file sync and share server on Clouve through occ over the clouve-ops SSH channel. It covers staff accounts and groups, Team folders, sharing and links, quotas, Nextcloud apps, email setup, backups and restores, setup warnings, background jobs, stuck upgrades and maintenance mode, and slow or broken pages. Use when the user runs the Clouve Nextcloud app or mentions \"Nextcloud\", `occ`, `config.php` in `/var/www/html/config`, Team folders or groupfolders, WebDAV, CalDAV or CardDAV sync, share links, or `oc_*` tables. Do not use for ownCloud, or for generic PHP, Apache or MySQL questions that aren't tied to a Nextcloud instance.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "category": "DevOps",
       "tags": ["devops", "file-sharing", "nextcloud", "php", "mysql"],
       "author": {
@@ -83,7 +83,7 @@
       "name": "odoo",
       "source": "./plugins/odoo",
       "description": "Safely operate an Odoo 19.0 ERP install — install/upgrade modules, filestore-aware backups and restores, prod→staging neutralization, database-manager hardening, and diagnosing module/upgrade failures — without corrupting accounting or framework data. Use when the user is running the Clouve Odoo app, mentions \"Odoo\", `odoo-bin`, `odoo.conf`, the master password, `account.move`, `ir_model_data`, `ir.config_parameter`, the filestore, or `/web/database/manager`. Do not use for generic Python/PostgreSQL/Linux questions that are not tied to an Odoo instance.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "category": "DevOps",
       "tags": ["devops", "erp", "odoo", "python", "postgresql"],
       "author": {
@@ -95,7 +95,7 @@
       "name": "suitecrm",
       "source": "./plugins/suitecrm",
       "description": "Safely run a SuiteCRM 8.10 customer relationship manager on Clouve for a small business's sales and support team, through audited scripts over the clouve-ops SSH channel. It covers accounts, contacts, leads and opportunities (add, update, link, delete with a way back), CSV imports with a dry run and an undo, pipeline questions answered with read-only SQL, users, roles and security groups, outgoing email checks, Module Loader packages and Quick Repair, scheduled jobs, backups and restores, health checks, and the state of an image upgrade. Use when the user runs the Clouve SuiteCRM app or the Customer Kit, or mentions \"SuiteCRM\", their CRM, leads, opportunities or the sales pipeline, Module Loader, Studio, `bin/console`, `config_override.php`, or SuiteCRM tables such as `accounts`, `leads` or `opportunities`. Do not use for SugarCRM, Salesforce or another CRM, for LimeSurvey's own side of the Customer Kit, or for generic PHP, Apache or MySQL questions that aren't tied to a SuiteCRM instance.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "DevOps",
       "tags": ["devops", "crm", "suitecrm", "php", "mysql"],
       "author": {
@@ -107,7 +107,7 @@
       "name": "wordpress",
       "source": "./plugins/wordpress",
       "description": "Safely operate a WordPress site deployed on Clouve — backups and restores, plugin and theme management, core updates, site URL changes, wp-cron, hardening, and diagnosing WSODs / 500s / lost admin access, over the channels the pod actually provides. Use when the user is running a WordPress instance, mentions \"WordPress\", `wp-config.php`, `wp_*` tables, `wp-content/`, `wp-admin`, permalinks / `.htaccess`, the white screen of death, or `wp` CLI commands. Do not use for generic PHP/Apache/MySQL questions that are not tied to a WordPress instance.",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "category": "DevOps",
       "tags": ["devops", "cms", "wordpress", "php", "mysql"],
       "author": {

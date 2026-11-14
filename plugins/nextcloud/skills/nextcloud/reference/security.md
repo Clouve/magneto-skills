@@ -45,6 +45,10 @@ In this file `occ <command>` means that command run with [occ.sh](../scripts/occ
 - `maximumLoginAttempts` stays 0. Above 0, that many failed sign-ins in a row disable an enabled account, and the app counts a failure for any existing login name, whoever sends it. Anyone who knows a login could then lock the account out. The log line is `Too many consecutive failed login attempts, disabling user` (`apps/password_policy/lib/FailedLoginCompliance.php:38-58`, version 7.0.0, in the 35.0.2 image). `user:enable` undoes it ([users-and-groups.md](users-and-groups.md#disabling-and-deleting)). The throttle above is the protection that stays.
 - `enforceHaveIBeenPwned` looks each new password up over the internet. When the lookup fails, the policy lets the password through ([users-and-groups.md](users-and-groups.md#the-policy)).
 
+## The database password
+
+The image writes `dbpassword` in `config.php` from the deployment's settings at every start, so a password changed in MariaDB or in `config.php` alone doesn't last. Never `ALTER USER` the database user. For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there. Otherwise Clouve support can do it for you. It sets a new password in the database and in the deployment's settings, and restarts Nextcloud and the AI Assistant (this session ends), so Nextcloud is down for a minute or two.
+
 ## Two-factor authentication
 
 - Enforcement is the system key `twofactor_enforced`, and it has to be the string `'true'`. A boolean `true` enforces nothing. `twofactorauth:enforce --on` writes the right strings, and `--off` undoes it ([MandatoryTwoFactor.php:26-41](https://github.com/nextcloud/server/blob/v35.0.2/lib/private/Authentication/TwoFactorAuth/MandatoryTwoFactor.php#L26-L41), [Enforce.php:58-74](https://github.com/nextcloud/server/blob/v35.0.2/core/Command/TwoFactorAuth/Enforce.php#L58-L74)).

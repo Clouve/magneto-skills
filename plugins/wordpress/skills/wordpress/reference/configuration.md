@@ -4,7 +4,7 @@
 
 First thing to check, always: which shape you are on ([stack-and-runtime.md](stack-and-runtime.md)). Shape A (Clouve-packaged) actively re-asserts parts of this configuration **on every boot**; Shape B (developer compose) never touches the file after first-boot generation.
 
-Any actual `wp-config.php` edit falls under the [SKILL.md safety gate](../SKILL.md#safety-gates-enforce-these-in-every-flow): requires a file channel, show the lines you change (never a diff or a print of the file: it holds the eight keys and salts in plain text), get user ack. A setting that comes from the container's environment (the `WORDPRESS_*` variables below) can't be changed from here, and the customer has no control for it either: that's a Clouve support request.
+Any actual `wp-config.php` edit falls under the [SKILL.md safety gate](../SKILL.md#safety-gates-enforce-these-in-every-flow): requires a file channel, show the lines you change (never a diff or a print of the file: it holds the eight keys and salts in plain text), get user ack. A setting that comes from the container's environment (the `WORDPRESS_*` variables below) can't be changed from here, and the customer has no control for it either: that's a Clouve support request. The database password is the one exception: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there. Otherwise Clouve support can do it for you. It sets a new password in the database and in the deployment's settings, and restarts WordPress and the AI Assistant (this session ends), so WordPress is down for a minute or two.
 
 ## How the file is generated (both shapes)
 

@@ -82,6 +82,8 @@ Gibbon v30.0.01's declared requirements come from `version.php` (the `$systemReq
 
 **Read-only paths under normal operation:** everything else under `/var/www/html/` including `modules/`, `i18n/`, `themes/`, `installer/`. Gibbon writes state to MySQL, not the filesystem (apart from uploads and cache).
 
+Don't edit files in `vendor/` in place. At each start the image puts its own libraries there only while the package list and every package file still match what Clouve installed, so a site whose `vendor/` was edited stays on the old libraries (see the app's README, "The PHP libraries on an installed site").
+
 ## Container env surface
 
 The installer and runtime read these env vars. Declared in [apps/gibbon/clv-docker-compose.yml](../../clv-docker-compose.yml):

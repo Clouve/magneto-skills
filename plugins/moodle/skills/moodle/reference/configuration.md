@@ -208,7 +208,7 @@ if (!empty($redishost)) {
 }
 ```
 
-The Clouve image writes `$CFG->dbhost`, `dbname`, `dbuser`, `dbpass` and `wwwroot` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/installer/update-config.sh)), so an edit to those lines doesn't last. Nothing lets the customer change those settings, and a database password changed in MySQL alone stops working at the next start. Rotating the database password is a Clouve support request (the gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow)).
+The Clouve image writes `$CFG->dbhost`, `dbname`, `dbuser`, `dbpass` and `wwwroot` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/moodle/image/installer/update-config.sh)), so an edit to those lines doesn't last. A database password changed in MySQL alone stops working at the next start. For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you. It sets a new password in the database and in the deployment's settings, and restarts Moodle and the AI Assistant (this session ends), so Moodle is down for a minute or two. In the Education Kit, Moodle's sign-in and enrolment settings for Gibbon follow at that start too (the gate in [SKILL.md](../SKILL.md#safety-gates-enforce-these-in-every-flow)).
 
 ## Settings that live in the DB, not `config.php`
 

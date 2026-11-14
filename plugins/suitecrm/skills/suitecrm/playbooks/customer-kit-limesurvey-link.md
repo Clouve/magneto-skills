@@ -96,7 +96,7 @@ To the `limesurvey` skill, on LimeSurvey's side:
 To Clouve support:
 
 - SuiteCRM's key pair for API tokens, when it is missing or was replaced;
-- a database password that changed. LimeSurvey holds SuiteCRM's database password, and the settings on both sides are written at a start of the containers, which the assistant can't trigger.
+- a database password that changed. LimeSurvey holds SuiteCRM's database password, and the settings on both sides are written at a start of the containers, which the assistant can't trigger. The Rotate database password action restarts both apps, so after one the link works again. For a new password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you.
 
 Go to Clouve support when steps 1 to 5 are fine on this side, the `limesurvey` skill finds its side in order, and a test response still makes no lead. Write up what you ran, what it printed and when ([diagnose-problems](diagnose-problems.md), step 6).
 
