@@ -114,6 +114,8 @@ Moodle 5.2 and 5.3 are structured around a public/non-public split. Memorize thi
 └── trashdir/                        ← deleted-file holding pen
 ```
 
+Don't edit files in `vendor/` in place. At each start the image puts its own libraries there only while the package list and every package file still match what Clouve installed, so a site whose `vendor/` was edited stays on the old libraries (see the app's README, "The PHP libraries on an installed site").
+
 ### `dirroot` semantics
 
 The root [lib/setup.php](https://github.com/moodle/moodle/blob/v5.3.0/lib/setup.php) is a migration helper:

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <metadata>
+        <name>LssOldPlugin</name>
+        <type>plugin</type>
+        <version>1.0.0</version>
+        <author>limesurvey skill tests</author>
+        <license>MIT</license>
+        <description><![CDATA[Test fixture that lists LimeSurvey 6 only]]></description>
+    </metadata>
+    <compatibility>
+        <version>6.0</version>
+    </compatibility>
+    <updaters disabled="disabled"></updaters>
+</config>

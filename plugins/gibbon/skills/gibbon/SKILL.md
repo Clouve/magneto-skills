@@ -2,7 +2,7 @@
 name: gibbon
 description: Safely operate a Gibbon (gibbonedu) school-management install shipped by the Clouve Gibbon app — upgrades, module installs, backups, restores, academic-year rollover, adding people (staff, students, parents), hardening, and diagnosing 500s. Use when the user is running this app, mentions "Gibbon", wants to add a student, teacher or parent to the school, or asks about `config.php`, `gibbonSetting`, `gibbonSchoolYear`, or any `gibbon*` table. Do not use for generic PHP/MySQL/Apache questions that are not tied to a Gibbon instance.
 type: devops
-version: 0.1.5
+version: 0.1.6
 authoredAgainst: gibbon v30.0.01
 ---
 
@@ -25,7 +25,7 @@ Use this skill when the user is working with the Clouve Gibbon app, when they me
 
 1. **Back up before migrations, upgrades, or any DDL.** Anything that changes schema, drops rows beyond one, or touches `config.php` → take a DB dump and tar `uploads/` + `config.php` first. See [playbooks/rollback-from-backup.md](playbooks/rollback-from-backup.md) for the verified shape of a backup.
 2. **Never truncate or drop a "student data" table.** The never-touch list is in [reference/data-model.md](reference/data-model.md). If the user asks you to, refuse and explain why; if they insist with a clear justification, require an explicit `yes, I understand this is irreversible` ack before running.
-3. **Never edit `config.php` without first showing the lines you change, with the database password masked (never a diff or a print of the file).** The image writes `$databaseServer/Name/Username/Password` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/gibbon/image/installer/update-config.sh)), so don't change those four lines by hand. Rotating the database password is a Clouve support request ([playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md), section 2).
+3. **Never edit `config.php` without first showing the lines you change, with the database password masked (never a diff or a print of the file).** The image writes `$databaseServer/Name/Username/Password` from the deployment's settings at every start ([update-config.sh](https://github.com/Clouve/magneto/blob/develop/apps/gibbon/image/installer/update-config.sh)), so don't change those four lines by hand. For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you ([playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md), section 2).
 4. **Dry-run first, then execute.** For any multi-row `UPDATE`/`DELETE`, run the equivalent `SELECT` first and report the row count back to the user. Only proceed after they confirm.
 5. **Destructive actions go through `scripts/`.** Freehand `rm -rf`, `DROP TABLE`, `TRUNCATE`, or hand-written `DELETE` without a `WHERE` that you wrote yourself and verified are off-limits. Use [scripts/backup.sh](scripts/backup.sh) for backups and [scripts/verify-health.sh](scripts/verify-health.sh) for health checks.
 6. **Check `/version.php` before upgrading.** Gibbon versions itself by the `$version` string in `/var/www/html/version.php`. The running DB version is in the `gibbonSetting` table (scope='System', name='version'). If those disagree, an upgrade is already in progress or failed — see [playbooks/upgrade-gibbon.md](playbooks/upgrade-gibbon.md) before doing anything else.
@@ -113,6 +113,6 @@ The gates are the reason this skill exists. If any of these are skipped, assume 
 | Upgrade Gibbon version | Backup taken first + `gibbonSetting(version)` matches `/var/www/html/version.php` + user ack |
 | Year-end rollover | Next `gibbonSchoolYear` row exists + `max_input_vars >= student count` + full backup + user ack |
 | Add a user | The admin uses Gibbon's own form ([playbooks/add-a-user.md](playbooks/add-a-user.md)); never a SQL insert, and no password in the chat |
-| Rotate DB credentials | Not from here, and the customer has no control for it: Clouve support ([playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md), section 2) |
+| Rotate DB credentials | Not from here: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you ([playbooks/rotate-admin-credentials.md](playbooks/rotate-admin-credentials.md), section 2). Never `ALTER USER` the database user |
 
 "User ack" means: you print the exact command/SQL you are about to run, and wait for the user to reply affirmatively before executing. Do not infer consent from an earlier "go ahead."

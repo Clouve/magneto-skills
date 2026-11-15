@@ -1,0 +1,10 @@
+id	related_id	class	type/scale	name	relevance	text	help	language	validation	mandatory	other	default	same_default
+		S		sid		987030							
+		S		language		en							
+		S		format		G							
+		SL		surveyls_title		Equation		en					
+		SL		surveyls_welcometext		Welcome.		en					
+		SL		surveyls_endtext		Thanks.		en					
+1		G	1	Only group	1			en					
+1		Q	S	nick	1	A nickname		en		N	N		0
+2		Q	*	echoed	1	{nick}		en		N	N		0

@@ -97,7 +97,7 @@ Each of these can be verified/adjusted from Gibbon's admin UI or from `config.ph
 - Advise on hardening.
 - Run diagnostics that don't change state.
 - Patch a known CVE by upgrading (following the upgrade playbook).
-- Rotate the admin user's password (in Gibbon's UI). The database password is Clouve support's to rotate.
+- Rotate the admin user's password (in Gibbon's UI). For a new database password: if your organization's admins see Database password on the deployment's Settings tab, one of them can press Rotate database password there (Rotate database passwords, in a kit). Otherwise Clouve support can do it for you.
 
 **Don't:**
 - Disable 2FA for an account the user hasn't proven ownership of.

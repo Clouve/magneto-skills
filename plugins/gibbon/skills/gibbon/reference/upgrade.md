@@ -74,7 +74,7 @@ Mostly:
 
 1. **Take a full backup.** DB dump + `uploads/` tarball + `config.php` copy. See [backup-restore.md](backup-restore.md).
 2. **Freeze writes.** Put Gibbon in maintenance or just do it at 3 AM. The `Updater` does not lock tables globally — concurrent writes during a migration can produce inconsistent state.
-3. **Deploy new files.** In this app: bump `GIBBON_VERSION` in the app's compose, redeploy. Container restart runs `upgrade.sh` automatically.
+3. **Deploy new files.** In this app: bump `GIBBON_VERSION` in the app's compose, redeploy. Container restart runs `upgrade.sh` automatically. Don't edit files in `vendor/` in place. At each start the image puts its own libraries there only while the package list and every package file still match what Clouve installed, so a site whose `vendor/` was edited stays on the old libraries (see the app's README, "The PHP libraries on an installed site").
 4. **Run migrations.** Either hit `/update.php` manually as an admin (the page is idempotent once per version), or wait for the first login. **Prefer hitting `/update.php` manually** so you see the success/failure message.
 5. **Verify.** `gibbonSetting(version) == version.php $version`. `SELECT COUNT(*) FROM gibbonPerson` equals pre-upgrade count. Login as admin. Spot-check a module page.
 6. **Re-enable writes.** Unfreeze.

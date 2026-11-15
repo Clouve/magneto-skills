@@ -1,0 +1,17 @@
+id	related_id	class	type/scale	name	relevance	text	help	language	validation	mandatory	other	default	same_default
+		S		sid		987024							
+		S		language		en							
+		S		additional_languages		de							
+		S		format		G							
+		SL		surveyls_title		Two languages		en					
+		SL		surveyls_welcometext		Welcome.		en					
+		SL		surveyls_endtext		Thank you.		en					
+		SL		surveyls_title		Zwei Sprachen		de					
+		SL		surveyls_welcometext		Willkommen.		de					
+		SL		surveyls_endtext		Danke.		de					
+1		G	1	About you	1			en					
+1		G	1	Über Sie	1			de					
+1		Q	L	heard	1	How did you hear about us?		en		Y	N		0
+1		A	0	A1		From a friend		en					
+1		A	0	A2		A web search		en					
+1		Q	S	heard	1	Wie haben Sie von uns erfahren?		de		Y	N		0
