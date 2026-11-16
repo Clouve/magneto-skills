@@ -36,7 +36,7 @@ Check SuiteCRM's side in this order. Steps 1 to 4 read only.
 
 `status` has to be `Active` and `is_admin` `true`. If either is not, step 5 puts it right. Exit 3 means no account has that login any more: someone renamed it. No script here renames an account, so an admin changes the login back on the user's page in SuiteCRM.
 
-A changed password does not show here. Ask the user whether anyone changed the main admin's password, and whether the password on the Clouve dashboard still signs them in.
+A changed password does not show here. Ask the user whether anyone changed the main admin's password, and whether the password on the Clouve dashboard still signs them in. The plugin's status check in LimeSurvey does show it: ask the admin to open the plugin's settings in LimeSurvey (Configuration, Plugins, SuiteCRM Integration) and press "Check Status". Its last row, "Sign-in to SuiteCRM", signs in the way a sync does. SuiteCRM answers a wrong login or password, or an account that is not active, with HTTP 500, and a client secret it no longer takes with HTTP 401.
 
 ### 3. The API client
 
@@ -91,7 +91,7 @@ To the `limesurvey` skill, on LimeSurvey's side:
 
 - the plugin's settings: whether it is on, SuiteCRM's address, the admin's login and password stored there, whether the survey is linked and how its questions map to fields;
 - running "Initialize OAuth2" in the plugin's settings when step 3 found no client. That makes the client again. Until it is done, the plugin's own status check says that SuiteCRM no longer has the client, and so does the `limesurvey` skill's `crm-link.sh status`;
-- the survey's sync log, which has a row for each response the plugin sent, marked `success` or `failed`. A failed row there is the sign of a broken link. Go by that log, never by the status line alone: the status checks that the client is there and does not try the sign-in, so a changed admin password does not show in it.
+- the survey's sync log, which has a row for each response the plugin sent, marked `success` or `failed`. A failed row there is the sign of a broken link. Go by that log, never by the status check alone: the status check tries the sign-in, so a changed admin password shows in it, but it sends no record. The `limesurvey` skill's `crm-link.sh status` doesn't try the sign-in.
 
 To Clouve support:
 
@@ -102,7 +102,7 @@ Go to Clouve support when steps 1 to 5 are fine on this side, the `limesurvey` s
 
 ## Check the result
 
-A test response that the user sends in shows up as a lead: the count for today in step 4 goes up by one, and the newest lead is theirs. That lead proves the link, together with a row without an error in the survey's sync log on LimeSurvey's side. The plugin's status line does not prove it.
+A test response that the user sends in shows up as a lead: the count for today in step 4 goes up by one, and the newest lead is theirs. That lead proves the link, together with a row without an error in the survey's sync log on LimeSurvey's side. The plugin's status check does not prove it: it signs in, and it sends no record.
 
 ## Tell the user
 
@@ -128,5 +128,7 @@ When a user asks for one of them, say what it would stop, and offer what does th
 | sql-read.sh exits 64 on step 3 | The query was changed: it names the secret, or uses `*` | Run it as written |
 | restore-admin-password.sh exits 1, 2 or 3 | The agent has no admin password, SuiteCRM did not keep it, or the account was not found | The table in [regain-admin-access](regain-admin-access.md) |
 | Leads still don't arrive after step 5 | The cause is not the admin account | Step 6: the `limesurvey` skill first, then Clouve support |
-| The plugin's status check in LimeSurvey reads "ready", and leads still don't arrive | The status check asks SuiteCRM whether the client is there, and no more. It does not try the sign-in, so a changed admin password or a switched-off admin account does not show in it | Step 2 here, with the question about the password, and the survey's sync log on LimeSurvey's side (step 6) |
+| The plugin's status check in LimeSurvey reads "ready", and leads still don't arrive | The status check signs in to SuiteCRM as a sync does. "Ready" means that the main admin's login and password are right, the account is active and the API client is in order. It doesn't check that the account is still an admin, and it sends no record, so a fault that only a record meets doesn't show in it | Step 2 here, for the admin rights. Then the survey's sync log on LimeSurvey's side (step 6): its error message says what SuiteCRM answered. Then step 1 here |
+| The plugin's status check says that the sign-in to SuiteCRM failed, with HTTP 500 | SuiteCRM refused the main admin's login or password, or the account is not active | Steps 2 and 5 here |
+| The plugin's status check says that SuiteCRM refused the sign-in, with HTTP 401 | SuiteCRM no longer takes the secret of the client "LimeSurvey Integration": someone changed the client | LimeSurvey's side (step 6). Nothing here repairs the client |
 | Exit 75 | The image is installing or upgrading SuiteCRM, a restore was cut off, or the container waits | `upgrade-state.sh` says which. Wait ([failed-upgrade](failed-upgrade.md)), or finish the restore ([restore-from-backup](restore-from-backup.md)) |

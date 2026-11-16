@@ -72,7 +72,7 @@ Without `--yes-replace-current-data` it checks everything and changes nothing. W
 1. The marker `clouve/backups/RESTORE-IN-PROGRESS` is written, before the database is touched. The other scripts refuse to run while it is there.
 2. Maintenance mode `hard-cli`, when the site is in a state to take it.
 3. The backup's `security.php` goes in place, as the web server's user's file with mode 600. The one that was there is kept in `clouve/backups/before-restore-<time>/`.
-4. The dump is loaded over the tables that are there. No table is dropped first. A dump replaces each of its own tables in turn, so LimeSurvey's tables exist at every moment of the load. When the load is done, the tables that the dump does not hold are removed: a failed upgrade or a newer site can have left some.
+4. The dump is loaded over the tables that are there, with the database client in its sandbox: a command for the client in a dump (`\!` or `system`, which run a shell command) doesn't run, and the restore stops at this step (exit 4) and says so. No table is dropped first. A dump replaces each of its own tables in turn, so LimeSurvey's tables exist at every moment of the load. When the load is done, the tables that the dump does not hold are removed: a failed upgrade or a newer site can have left some.
 5. `upload/` is emptied and filled from the backup. Added plugins are put back, except those the image ships itself.
 6. When the backup's database is older than the code, LimeSurvey's database update runs.
 7. Maintenance mode goes to what the backup recorded. The site stays locked until then, also when the dump was taken without the lock.
@@ -89,7 +89,7 @@ What it refuses: a backup that fails its checksums, a backup whose dump has no L
 
 `--keys-only` puts back `application/config/security.php` from the backup and nothing else. It first tests the backup's keys against what the database holds encrypted, refuses keys that can't read it, and refuses when the keys in place already can. The file that was there is kept in `clouve/backups/before-restore-<time>/`. It is the way back from `[FAIL] security.php` and `[FAIL] keys` ([playbooks/restore-from-backup.md](../playbooks/restore-from-backup.md#only-the-keys-are-missing-or-wrong)).
 
-Exit codes: 0 done (or the checks passed), 1 not the place or time, 2 the backup can't be used, 3 too little space or no database, 4 it failed after it began (the marker stays; run it again).
+Exit codes: 0 done (or the checks passed), 1 not the place or time, 2 the backup can't be used, 3 too little space, no database, or a database client without a sandbox mode, 4 it failed after it began (the marker stays; run it again).
 
 ## Survey files are not backups
 

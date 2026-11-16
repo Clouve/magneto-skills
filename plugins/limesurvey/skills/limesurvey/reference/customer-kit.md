@@ -53,7 +53,7 @@ Two ways to map:
 /clouve/skills/limesurvey/plugin/skills/limesurvey/scripts/crm-link.sh mappings --survey <survey id>
 ```
 
-The mapping that counts is the one on the question (its attribute `suitecrm_mappings_json`): the plugin reads it when an answer set is completed. The script also writes it to the plugin's own table `lime_survey_crm_mappings`, which the plugin's pages show, and says `The plugin's own table: updated`. If that line ever reads `not updated`, the mapping on the question is stored and answers still reach the CRM. The plugin's pages are then out of step, which Clouve should hear about.
+The mapping that counts is the one on the question (its attribute `suitecrm_mappings_json`): the plugin reads it when an answer set is completed. The script also writes a copy to the plugin's own table `lime_survey_crm_mappings`, and says `The plugin's own table: updated`. No sync reads that copy, and no page shows it: only the plugin's `actionGetMappings` address returns it. A new Customer Kit's install fills it with the demo survey's mappings. A mapping changed in LimeSurvey's question editor doesn't update it, so a copy that is behind the question is expected and not a fault. If the script's line reads `not updated`, the mapping on the question is stored and answers still reach the CRM: tell the user, as information.
 
 ## The log
 
@@ -63,8 +63,8 @@ The table `lime_survey_crm_sync_log` has one row per attempt: the answer set (`r
 
 | Change | Effect | Way back |
 |---|---|---|
-| The SuiteCRM admin's password is changed in SuiteCRM | The plugin's sign-in fails. `crm-link.sh status` still reads "set up": it checks that the client is there and does not try the sign-in | Set it back to the deployment's password in SuiteCRM (the `suitecrm` skill) |
-| The OAuth2 client "LimeSurvey Integration" is deleted or changed, or SuiteCRM's OAuth2 keys are replaced | The plugin's API calls are refused. When the client is gone, `crm-link.sh status` says that SuiteCRM no longer has it, and so does the status check on the plugin's settings page. A changed client or replaced keys don't show there, only as failed sends | The plugin's settings page has "Initialize OAuth2", which makes the client again |
+| The SuiteCRM admin's password is changed in SuiteCRM | The plugin's sign-in fails. `crm-link.sh status` still reads "set up": it checks that the client is there and does not try the sign-in. "Check Status" on the plugin's settings page tries it, and says that it failed | Set it back to the deployment's password in SuiteCRM (the `suitecrm` skill) |
+| The OAuth2 client "LimeSurvey Integration" is deleted or changed, or SuiteCRM's OAuth2 keys are replaced | The plugin's API calls are refused. When the client is gone, `crm-link.sh status` says that SuiteCRM no longer has it, and so does the status check on the plugin's settings page. A changed client shows only on that page, as a sign-in that SuiteCRM refused (HTTP 401). Replaced keys may show in neither, only as failed sends | The plugin's settings page has "Initialize OAuth2", which makes the client again once SuiteCRM no longer has it. For a changed client, an admin deletes it in SuiteCRM first |
 | The plugin is switched off in LimeSurvey | Nothing is sent | `extensions.sh plugin-activate SuiteCRMIntegration`, after a yes |
 | LimeSurvey marked the plugin as broken (`load error` in `crm-link.sh status`) | The plugin is not loaded, and nothing is sent | The image clears the mark at every start. Ask Clouve support to restart the app; if the mark comes back, the plugin is broken |
 | The link is off for the survey, or its setting has duplicate rows | That survey sends nothing | `crm-link.sh enable-survey --survey <id>` |

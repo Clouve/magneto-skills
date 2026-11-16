@@ -2,7 +2,7 @@
 name: suitecrm
 description: Safely run a SuiteCRM 8.10 customer relationship manager on Clouve for a small business's sales and support team, through audited scripts over the clouve-ops SSH channel. It covers accounts, contacts, leads and opportunities (add, update, link, delete with a way back), CSV imports with a dry run and an undo, pipeline questions answered with read-only SQL, users, roles and security groups, outgoing email checks, Module Loader packages and Quick Repair, scheduled jobs, backups and restores, health checks, and the state of an image upgrade. Use when the user runs the Clouve SuiteCRM app or the Customer Kit, or mentions "SuiteCRM", their CRM, leads, opportunities or the sales pipeline, Module Loader, Studio, `bin/console`, `config_override.php`, or SuiteCRM tables such as `accounts`, `leads` or `opportunities`. Do not use for SugarCRM, Salesforce or another CRM, for LimeSurvey's own side of the Customer Kit, or for generic PHP, Apache or MySQL questions that aren't tied to a SuiteCRM instance.
 type: devops
-version: 0.1.1
+version: 0.1.2
 authoredAgainst: suitecrm v8.10.2
 ---
 
@@ -281,9 +281,9 @@ The Command column has the script, the words that make the command this action, 
 | Removing a backup | `backup.sh --remove --yes-remove` | The user picks it by name; ack. Not while a restore is cut off |
 | Removing the backup an upgrade kept | `upgrade-state.sh --remove-kept-backup --yes-remove` | The user has checked the upgraded site; say that there is then no way back to the old version; ack. Not while an upgrade is under way or has failed |
 | Copying a backup into the Files pane | `tar -cf`, in the raw command of [reference/backup-restore.md](reference/backup-restore.md) | Say what the copy holds: every record, every user's password hash and the database password; ack. Remove the copy once the user has it |
-| Handing files that root wrote back to the web user | `chown -R`, in the raw command of [playbooks/diagnose-problems.md](playbooks/diagnose-problems.md) | Say which one of the four folders it is; ack |
+| Handing files that root wrote back to the web user | `chown -h`, in the raw command of [playbooks/diagnose-problems.md](playbooks/diagnose-problems.md) | Say which one of the four folders it is; ack |
 
-No flag. Most commands in the table do nothing until they get their yes flag. These have none and run at once, so only your gate stands between a wrong word and the change: `records.sh create --allow-duplicate`, `temp-password.sh --create`, `users.sh set-admin <login> no`, `users.sh deactivate`, `users.sh activate`, `users.sh role-set`, `users.sh role-assign`, `users.sh role-unassign`, `users.sh group-add`, `users.sh group-remove`, `console.sh messenger:failed:retry`, `tar -cf` and `chown -R`.
+No flag. Most commands in the table do nothing until they get their yes flag. These have none and run at once, so only your gate stands between a wrong word and the change: `records.sh create --allow-duplicate`, `temp-password.sh --create`, `users.sh set-admin <login> no`, `users.sh deactivate`, `users.sh activate`, `users.sh role-set`, `users.sh role-assign`, `users.sh role-unassign`, `users.sh group-add`, `users.sh group-remove`, `console.sh messenger:failed:retry`, `tar -cf` and `chown -h`.
 
 ### Other rules, and what you refuse
 
