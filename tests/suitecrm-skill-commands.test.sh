@@ -258,7 +258,8 @@ for file in md_files:
                 say(f"a {cmd} command", file, line, head.strip()[:120])
         if re.search(r"bin/console", head) and "console.sh" not in head:
             say("a raw bin/console command", file, line, head.strip()[:120])
-        if re.search(r"sshpass\s+-p|curl\s[^|;]*\s(?:-u|--user)\s|--password=|\s-p['\"]?[A-Za-z0-9$]", head) and "mkdir -p" not in head:
+        # -p<password> for a database client, but not find's -prune, -perm or -printf.
+        if re.search(r"sshpass\s+-p|curl\s[^|;]*\s(?:-u|--user)\s|--password=|\s-p(?!rune\b|erm\b|rintf\b)['\"]?[A-Za-z0-9$]", head) and "mkdir -p" not in head:
             say("a password on a command line", file, line, head.strip()[:120])
         if "sshpass" in head and 'SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e' not in head:
             say("an sshpass command that does not set SSHPASS in the two-part form", file, line, head.strip()[:120])

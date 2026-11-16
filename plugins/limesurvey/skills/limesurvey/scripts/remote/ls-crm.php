@@ -20,7 +20,8 @@
  *                    refused with the names that are, and so is every mapping when the field list cannot be had
  *                    (SuiteCRM does not answer and the plugin's cache is empty). Then the mapping is stored where
  *                    the plugin reads it when an answer set is completed (the question attribute
- *                    suitecrm_mappings_json), and in the plugin's own table through the plugin's own class.
+ *                    suitecrm_mappings_json), and a copy in the plugin's own table through the plugin's own class.
+ *                    No sync reads that copy, and an edit in LimeSurvey's question editor doesn't update it.
  *   set-survey-link  sid, enabled (true or false). Switches the link on or off for one survey. Duplicate rows of
  *                    that setting, which make the plugin read the wrong one, are removed.
  * Reply (stdout): one line, {"result": ..., "error": null} or {"result": null, "error": "..."}; exit 0 or 1.
@@ -281,12 +282,13 @@ ls_rc_run(function (array $ctx) use ($request, $action) {
             if (!$attribute->save()) {
                 ls_rc_fail('LimeSurvey did not save the mapping: ' . json_encode($attribute->getErrors()));
             }
-            // The plugin's own table, through the plugin's own class, so that its pages show the same.
+            // A copy in the plugin's own table, through the plugin's own class. Only the plugin's actionGetMappings
+            // address reads it.
             $table = 'not updated: the plugin\'s class was not found';
             $class = "$root/plugins/SuiteCRMIntegration/classes/DatabaseSchema.php";
             if (is_file($class)) {
-                // The attribute above is what counts when an answer set is completed. The table is what the
-                // plugin's own pages show, so a failure here is reported and does not undo the mapping.
+                // The attribute above is what counts when an answer set is completed. The table is only a copy,
+                // so a failure here is reported and does not undo the mapping.
                 try {
                     require_once $class;
                     if (class_exists('SuiteCRMDatabaseSchema')) {

@@ -39,7 +39,11 @@
 #      tables are there at every moment: the platform's health check keeps answering through a long load, and a
 #      container that restarts in the middle finds a database it can start on. The tables are never dropped
 #      first. When the load is done, the tables and views that the dump does not hold are removed (a failed
-#      upgrade or a newer site can have left some).
+#      upgrade or a newer site can have left some). The client loads the dump, and drops those tables, in its
+#      sandbox (--sandbox). A dump can hold commands for the client as well as SQL: \! and system run a shell
+#      command, and source reads a file. The sandbox refuses them, so none of them runs, and the restore stops at
+#      this step. mariadb-dump begins its dumps with the line that turns the sandbox on, so they load in it too.
+#      Step 1 refuses a client that has no sandbox mode (exit 3).
 #   6. upload/ is emptied and filled from the backup. The added plugins are put back, except the ones this
 #      image's own LimeSurvey package ships. Files are unpacked as www-data, never as root, by name, without the
 #      archive's owners and without setuid, setgid or sticky bits. Nothing but files, folders and links is kept.
@@ -68,7 +72,7 @@
 #      another backup or restore running, no fresh backup of the current state
 #   2  the backup is not usable: damaged, incomplete, or from a newer LimeSurvey; --keys-only: its keys do not
 #      read the data, or the keys in place already do
-#   3  not enough space, or the database does not answer; nothing was changed
+#   3  not enough space, the database does not answer, or its client has no sandbox mode; nothing was changed
 #   4  the restore failed after it began: the marker stays, and the output names the step
 
 # SC2154: lib/state.sh and lib/site.sh, sourced below, set clv_backups_dir, ls_root, site_work and the db_* and
@@ -340,6 +344,12 @@ if [ "${backup_dbversion}" -gt "${code_dbversion}" ]; then
     err "the backup is from LimeSurvey ${backup_version} (database version ${backup_dbversion}), which is newer than the LimeSurvey ${code_version} this container runs (database version ${code_dbversion}). An older LimeSurvey cannot read a newer database, so it was not restored"
     exit 2
 fi
+# Step 5 runs the client in its sandbox, so the client has to have one. The image's client does. This refuses a
+# client without one, before anything changes.
+if ! "${db_client[@]}" --sandbox -N -B "${db_name}" -e 'SELECT 1' > /dev/null 2>&1; then
+    err "the database client in this container (${db_client[0]##*/}) has no sandbox mode (--sandbox), and a restore loads the dump only in that mode. Nothing was changed"
+    exit 3
+fi
 # The tables the dump holds. LimeSurvey's settings table has to be one of them: a dump without it would leave a
 # site that cannot start.
 zcat "${dir}/database.sql.gz" | LC_ALL=C sed -n 's/^DROP TABLE IF EXISTS `\(.*\)`;$/\1/p; s/^CREATE TABLE `\(.*\)` ($/\1/p' | LC_ALL=C sort -u > "${site_work}/dump-tables"
@@ -463,9 +473,14 @@ settings="$(ls_table settings_global)"
 say "loading the dump over the ${tables_now:-0} tables of ${db_name} (no table is dropped first)"
 zcat "${dir}/database.sql.gz" | LC_ALL=C sed -e "/^LOCK TABLES \`${settings}\` WRITE;\$/,/^UNLOCK TABLES;\$/{/^UNLOCK TABLES;\$/i\\
 REPLACE INTO \`${settings}\` (stg_name, stg_value) VALUES ('maintenancemode', 'hard-cli');
-}" | "${db_client[@]}" "${db_name}" 2> "${site_work}/err"
+}" | "${db_client[@]}" --sandbox "${db_name}" 2> "${site_work}/err"
 codes=("${PIPESTATUS[@]}")
-if [ "${codes[0]}" -ne 0 ] || [ "${codes[1]}" -ne 0 ] || [ "${codes[2]}" -ne 0 ]; then fail "loading the dump ($(head -c 300 "${site_work}/err"))"; fi
+if [ "${codes[0]}" -ne 0 ] || [ "${codes[1]}" -ne 0 ] || [ "${codes[2]}" -ne 0 ]; then
+    if grep -q 'Not allowed in the sandbox mode' "${site_work}/err"; then
+        fail "loading the dump. It holds a command for the database client (such as \\! or system, which run a shell command), and no dump that backup.sh makes holds one. The client refused it, so it did not run. This backup will fail the same way again"
+    fi
+    fail "loading the dump ($(head -c 300 "${site_work}/err"))"
+fi
 loaded="$(ls_sql "SELECT stg_value FROM ${settings} WHERE stg_name = 'DBVersion'" 2> /dev/null)"
 [ "${loaded}" = "${backup_dbversion}" ] || fail "checking the loaded database (its version reads \"${loaded}\", the backup's is ${backup_dbversion})"
 # Now the tables and views the dump does not hold.
@@ -481,7 +496,7 @@ while IFS=$'\t' read -r table kind; do
 done <<< "${tables_after}"
 if [ "${extra}" -gt 0 ]; then
     # On stdin: a site can have thousands of tables.
-    printf 'SET FOREIGN_KEY_CHECKS = 0;\n%s' "${extra_sql}" | "${db_client[@]}" "${db_name}" 2> "${site_work}/err" || fail "removing the ${extra} tables the backup does not hold ($(head -c 200 "${site_work}/err"))"
+    printf 'SET FOREIGN_KEY_CHECKS = 0;\n%s' "${extra_sql}" | "${db_client[@]}" --sandbox "${db_name}" 2> "${site_work}/err" || fail "removing the ${extra} tables the backup does not hold ($(head -c 200 "${site_work}/err"))"
 fi
 say "the database is the backup's ($(ls_sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()") tables; ${extra} that the backup does not hold were removed)"
 

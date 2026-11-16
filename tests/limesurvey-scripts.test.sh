@@ -150,6 +150,13 @@ if command -v shellcheck > /dev/null; then
 fi
 not_exec="$(find "${scripts_dir}" -maxdepth 1 -name '*.sh' ! -perm -u+x -printf '%f ')"
 is "every script the assistant runs is executable" "" "${not_exec}"
+# restore.sh runs the database client as root and hands it SQL on its standard input: the dump, and the tables to
+# drop. A line such as \! or system in that stream is a command for the client, and the client would run it as a
+# shell command, as root. Its sandbox refuses those commands. So every client in restore.sh that reads a pipe runs
+# with --sandbox.
+piped="$(awk '/^[[:space:]]*#/ { next } /\|[[:space:]]*("[$][{]db_client[[]@[]][}]"|mysql|mariadb)([[:space:]]|$)/ { print FNR ": " $0 }' "${scripts_dir}/remote/restore.sh")"
+is "the test finds the clients in restore.sh that read a pipe (the load and the drop)" "2" "$(printf '%s\n' "${piped}" | grep -c . || true)"
+is "every one of them runs with --sandbox" "" "$(printf '%s\n' "${piped}" | grep -v -e '--sandbox' || true)"
 
 echo
 echo "Building the images and starting LimeSurvey (this can take a few minutes the first time) ..."
@@ -1683,7 +1690,20 @@ elif kind == "broken-dump":
     assert any(b"('maintenancemode','off')" in l for l in lines)
     with gzip.open(d + "/database.sql.gz", "wb") as f:
         f.write(b"\n".join(lines))
-names = ["database.sql.gz", "upload.tar.gz", "config.tar.gz", "plugins.tar.gz", "manifest.json"]
+elif kind in ("client-bang", "client-system"):
+    # A command for the database client: \! on the first line, above mariadb-dump's line that turns the sandbox
+    # on, or system after the first table's rows, in a dump without that line.
+    lines = gzip.open(d + "/database.sql.gz", "rb").read().split(b"\n")
+    if kind == "client-bang":
+        lines.insert(0, b"\\! touch /tmp/lss-sandbox-bang")
+    else:
+        if b"enable the sandbox mode" in lines[0]:
+            del lines[0]
+        at = next(i for i, l in enumerate(lines) if l.startswith(b"UNLOCK TABLES;"))
+        lines.insert(at + 1, b"system touch /tmp/lss-sandbox-system")
+    with gzip.open(d + "/database.sql.gz", "wb") as f:
+        f.write(b"\n".join(lines))
+names =["database.sql.gz", "upload.tar.gz", "config.tar.gz", "plugins.tar.gz", "manifest.json"]
 with open(d + "/SHA256SUMS", "w") as f:
     for n in names:
         f.write("%s  %s\n" % (hashlib.sha256(open(d + "/" + n, "rb").read()).hexdigest(), n))
@@ -1744,6 +1764,55 @@ has "and says why it needs none" "a restore was cut off here before"
 is "the marker is gone" "0" "$(suid 'ls /var/www/html/clouve/backups/RESTORE-IN-PROGRESS 2> /dev/null | wc -l')"
 is "the answers are the backup's" "3" "$(db_sql 2 'select count(*) from lime_responses_987002')"
 is "and the site is open again" "off" "$(maintenance 2)"
+
+# A dump with commands for the database client in it. The client reads the dump as root, and \! and system run a
+# shell command. Its sandbox refuses them, so such a restore fails at the load and runs nothing. mariadb-dump's own
+# dumps begin with a line that turns the sandbox on, so one command goes in above that line (\!) and the other into
+# a dump without it (system). A restore of a real backup then puts the site back. That backup's dump holds a
+# trigger, written between DELIMITER lines, and it loads in the sandbox.
+suid 'rm -f /tmp/lss-sandbox-bang /tmp/lss-sandbox-system'
+craft client-bang 20200606-060606 || bad "the crafted backup whose dump begins with \\! could be built"
+craft client-system 20200607-060606 || bad "the crafted backup whose dump holds system could be built"
+run "$S/backup-copy.sh push 20200606-060606"
+run "$S/backup-copy.sh push 20200607-060606"
+is "(the dumps hold the commands)" "\\! touch /tmp/lss-sandbox-bang 1" "$(suid 'cd /var/www/html/clouve/backups && zcat 20200606-060606/database.sql.gz | head -n 1; zcat 20200607-060606/database.sql.gz | grep -c -e "^system touch" -e "enable the sandbox mode"' | tr '\n' ' ' | sed 's/ $//')"
+db_sql 2 'create table lime_sandbox_trig (n int); create trigger lime_sandbox_trig_bi before insert on lime_sandbox_trig for each row set new.n = new.n + 1'
+run "$S/run-in-limesurvey.sh backup.sh"
+code "a backup of the site with a trigger in its database" 0
+with_trigger="$(printf '%s\n' "${out}" | sed -n 's/.*done: \([0-9]\{8\}-[0-9]\{6\}\) .*/\1/p')"
+db_sql 2 'drop table lime_sandbox_trig'
+is "(its dump holds the trigger, between DELIMITER lines)" "yes" "$(suid "cd /var/www/html/clouve/backups && zcat ${with_trigger}/database.sql.gz | grep -c -i -e '^DELIMITER' -e 'trigger .*lime_sandbox_trig_bi' | awk '{ print (\$1 >= 3 ? \"yes\" : \$1) }'")"
+run "$S/run-in-limesurvey.sh restore.sh --backup 20200606-060606 --yes-replace-current-data"
+code "a restore whose dump begins with \\! fails at the load" 4
+has "the output names the step" "FAILED at step: loading the dump"
+has "and says that the dump holds a command for the database client" "command for the database client"
+is "the shell command did not run" "0" "$(suid 'ls /tmp/lss-sandbox-bang 2> /dev/null | wc -l')"
+is "the marker stays, and names the backup" "20200606-060606" "$(suid 'head -n 1 /var/www/html/clouve/backups/RESTORE-IN-PROGRESS')"
+run "$S/run-in-limesurvey.sh restore.sh --backup 20200607-060606 --yes-replace-current-data"
+code "a restore whose dump has system in the middle, and no sandbox line, fails at the load" 4
+has "and says why" "command for the database client"
+is "that shell command did not run either" "0" "$(suid 'ls /tmp/lss-sandbox-system 2> /dev/null | wc -l')"
+run "$S/run-in-limesurvey.sh restore.sh --backup ${with_trigger} --yes-replace-current-data"
+code "a restore of the real backup runs over the marker and finishes" 0
+is "its trigger, which the dump holds between DELIMITER lines, is back" "1" "$(db_sql 2 "select count(*) from information_schema.triggers where trigger_schema = database() and trigger_name = 'lime_sandbox_trig_bi'")"
+is "and works" "2" "$(db_sql 2 'insert into lime_sandbox_trig values (1); select n from lime_sandbox_trig')"
+is "the marker is gone" "0" "$(suid 'ls /var/www/html/clouve/backups/RESTORE-IN-PROGRESS 2> /dev/null | wc -l')"
+is "the answers are the backup's" "3" "$(db_sql 2 'select count(*) from lime_responses_987002')"
+# A client without a sandbox mode: the restore refuses before it changes anything, also in the preview.
+docker exec -i -u root "$(ls_app 2)" sh -c 'cat > /usr/local/sbin/mariadb && chmod 755 /usr/local/sbin/mariadb' <<'CLIENT'
+#!/bin/sh
+# tests only: a database client that has no --sandbox
+for a in "$@"; do if [ "$a" = --sandbox ]; then echo "mariadb: unknown option '--sandbox'" >&2; exit 7; fi; done
+exec /usr/bin/mariadb "$@"
+CLIENT
+run "$S/run-in-limesurvey.sh restore.sh --backup ${with_trigger}"
+code "with a client that has no --sandbox, the preview refuses" 3
+has "and says why" "no sandbox mode"
+run "$S/run-in-limesurvey.sh restore.sh --backup ${with_trigger} --yes-replace-current-data"
+code "and so does the restore" 3
+is "no marker was written, and nothing was changed" "0 1" "$(suid 'ls /var/www/html/clouve/backups/RESTORE-IN-PROGRESS 2> /dev/null | wc -l') $(db_sql 2 'select count(*) from lime_sandbox_trig')"
+docker exec -u root "$(ls_app 2)" sh -c 'rm -f /usr/local/sbin/mariadb /tmp/lss-sandbox-bang /tmp/lss-sandbox-system'
+db_sql 2 'drop table lime_sandbox_trig'
 
 # The same restore onto a site whose security.php is gone, as after a lost config folder: LimeSurvey must not
 # start before the backup's keys are in place. A restore that was cut off left its marker.

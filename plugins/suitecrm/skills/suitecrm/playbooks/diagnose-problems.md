@@ -104,16 +104,18 @@ Never clear anything else by hand. `public/legacy/upload/`, `public/legacy/custo
 The `leftovers` line says so when files in the caches, `custom/` or `upload/` don't belong to `www-data`, the web server's user. SuiteCRM then can't rewrite them, and saves or screens fail. Something ran as root. The scripts of this skill run as `www-data`, so tell the user what you found. List the files. This reads only:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 clouve-ops@${SUITECRM_HOST} 'cd /var/www/html && sudo -n -u www-data find /var/www/html/cache /var/www/html/public/legacy/cache /var/www/html/public/legacy/custom /var/www/html/public/legacy/upload ! -user www-data | head -n 20'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 clouve-ops@${SUITECRM_HOST} 'cd /var/www/html && sudo -n -u www-data find /var/www/html/cache /var/www/html/public/legacy/cache /var/www/html/public/legacy/custom /var/www/html/public/legacy/upload ! -user www-data -printf "%u %m %p\n" | head -n 20'
 ```
 
-Gate. Tell the user which of the four folders holds them, and that the fix hands the files in that folder back to the web server's user without changing what is in them. Wait for a clear yes. Then run one `chown` over that folder. The command below is for the legacy cache. Put the folder that the listing named in its place, and never a folder outside those four:
+Each line shows the owner, the mode and the path. If the listing names a folder `clouve-backup` or `clouve-skill-backups`, or any folder that root owns and nobody else may open (mode 700 or 2700) whatever its name, change nothing and go to step 6. Those are the image's state folder and this skill's backups, root's own, and they are in that folder only because code that runs as `www-data` moved `tmp/` there, perhaps under another name.
+
+Gate. Tell the user which of the four folders holds them, and that the fix hands the files in that folder back to the web server's user without changing what is in them. Wait for a clear yes. Then run the command below once for that folder. It is for the legacy cache: put the folder that the listing named in its place, at the end of the command, and never a folder outside those four. `www-data` owns the path to that folder and could swap a part of it for a link, so the command works from inside the folder, stops when the folder isn't where its name says (a link on the way), and hands the files over with `find` and `chown -h`, which follow no link. It leaves alone, with what is in them, every folder named `clouve-*` and every folder that root owns and nobody else may open (mode 700 or 2700), whatever its name:
 
 ```bash
-SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 clouve-ops@${SUITECRM_HOST} 'sudo -n chown -R www-data:www-data /var/www/html/public/legacy/cache'
+SSHPASS="${CLOUVE_OPS_PASSWORD:-$(clv-secret CLOUVE_OPS_PASSWORD)}" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 clouve-ops@${SUITECRM_HOST} 'sudo -n bash -c "if cd -P -- \"\$1\" 2>/dev/null && [ \"\$(pwd -P)\" = \"\$1\" ]; then find . -xdev -type d \\( -name \"clouve-*\" -o \\( -user root ! -perm /077 \\) \\) -prune -o ! -user www-data -exec chown -h www-data:www-data -- {} + && echo \"done: \$1 belongs to www-data again\"; else echo \"refused: \$1 is not where its name says. Nothing was changed\"; exit 1; fi" _ /var/www/html/public/legacy/cache'
 ```
 
-Run step 1 again. When root-owned files come back, something keeps running as root: step 6.
+It prints one line. `done: ...` means the files in that folder belong to `www-data` again: run step 1 again. When root-owned files come back, something keeps running as root: step 6. `refused: ...` (exit 1) means the folder was not where its name says, because something put a link on the way. Change nothing, don't run the command again, and go to step 6 with the folder's name and that line.
 
 ### 6. When to stop and write up a support request
 

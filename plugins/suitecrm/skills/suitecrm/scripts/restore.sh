@@ -74,11 +74,18 @@
 # client in an options file of mode 600 in a folder of this run's own under /run/clouve/suitecrm-skill (root's,
 # not on the volume), removed at the end. It is never in a command line or in the output.
 #
-# Exit codes: 0 restored; 64 usage, or the preview; 1 SuiteCRM's settings or database can't be read; 2 a check
-# refused it (another version, no fresh backup, not enough free space, another backup or restore is running, a
-# folder that is not trusted); 3 no such backup, or it is not complete, not whole, or holds what a backup never
-# holds; 4 the restore failed after it began (the marker and the hold are kept); 75 the image is installing or
-# upgrading, or the container is still starting or waiting and no restore was cut off.
+# The client that drops the tables and loads the dump runs as root, in its sandbox (--sandbox). A dump can hold
+# commands for the client as well as SQL: \! and system run a shell command, and source reads a file. The
+# sandbox refuses them, so none of them runs, and the restore fails at the load (exit 4). mariadb-dump begins
+# its dumps with the line that turns the sandbox on, so a backup that backup.sh made loads in it too. A client
+# that has no sandbox mode is refused before anything changes (exit 1).
+#
+# Exit codes: 0 restored; 64 usage, or the preview; 1 SuiteCRM's settings or database can't be read, or the
+# database client has no sandbox mode; 2 a check refused it (another version, no fresh backup, not enough free
+# space, another backup or restore is running, a folder that is not trusted); 3 no such backup, or it is not
+# complete, not whole, or holds what a backup never holds; 4 the restore failed after it began (the marker and
+# the hold are kept); 75 the image is installing or upgrading, or the container is still starting or waiting
+# and no restore was cut off.
 
 set -uo pipefail
 set +x
@@ -102,10 +109,11 @@ the current state. It holds the scheduler and leaves it held: the backup's campa
 work come back, so the user looks at scheduler.sh queued and then says scheduler.sh release --yes-release.
 One backup or restore runs at a time. A restore that was cut off is finished by running it again.
 
-Exit codes: 0 restored; 64 usage or the preview; 1 settings or database unreadable; 2 refused (another
-version, no fresh backup, not enough space, another backup or restore is running, a folder that is not
-trusted); 3 the backup is missing, incomplete, damaged or holds what a backup never holds; 4 failed after it
-began; 75 SuiteCRM is being installed or upgraded, or its container is still starting or waiting.
+Exit codes: 0 restored; 64 usage or the preview; 1 settings or database unreadable, or a database client
+without a sandbox mode; 2 refused (another version, no fresh backup, not enough space, another backup or
+restore is running, a folder that is not trusted); 3 the backup is missing, incomplete, damaged or holds what
+a backup never holds; 4 failed after it began; 75 SuiteCRM is being installed or upgraded, or its container
+is still starting or waiting.
 USAGE
 }
 
@@ -352,6 +360,12 @@ if ! now_tables="$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE tab
     msg "could not reach SuiteCRM's database with the settings in config.php. Nothing was changed."
     exit 1
 fi
+# The drop and the load below run the client in its sandbox, so the client has to have one. The image's client
+# does. This refuses a client without one, before anything changes.
+if ! mysql --defaults-extra-file="${cnf}" --sandbox -N -B "${db_name}" -e 'SELECT 1' > /dev/null 2>&1; then
+    msg "the database client in this container has no sandbox mode (mysql --sandbox), and a restore loads the dump only in that mode. Nothing was changed."
+    exit 1
+fi
 count_of() { sql "SELECT COUNT(*) FROM $1 WHERE deleted = 0" || echo '?'; }
 
 # Space. The restore empties the folders the archive brings and then unpacks it, so what counts is the free
@@ -467,12 +481,14 @@ echo "Restoring the backup ${name} over this SuiteCRM (${now_tables} tables now)
 # makes its table again whenever it finds it gone. So the drop is repeated until nothing is left or three
 # passes are done, a table that is still there then is left to the dump (which drops and makes again every
 # table it holds), and a load that such a table stops is tried again from the drop, three times at most.
+# Both run the client in its sandbox (see the top of this file). When it refuses a command in the dump, the
+# restore stops: the next try would meet the same command.
 drop_all() {
     local pass drops
     for pass in 1 2 3; do
         drops="$(sql "SELECT CONCAT('DROP ', IF(table_type = 'VIEW', 'VIEW', 'TABLE'), ' IF EXISTS \`', table_name, '\`;') FROM information_schema.tables WHERE table_schema = DATABASE()")" || return 1
         [ -n "${drops}" ] || return 0
-        printf 'SET FOREIGN_KEY_CHECKS = 0;\n%s\n' "${drops}" | mysql --defaults-extra-file="${cnf}" "${db_name}" 2> /dev/null || return 1
+        printf 'SET FOREIGN_KEY_CHECKS = 0;\n%s\n' "${drops}" | mysql --defaults-extra-file="${cnf}" --sandbox "${db_name}" 2> /dev/null || return 1
     done
     return 0
 }
@@ -481,11 +497,14 @@ for attempt in 1 2 3; do
     step="dropping the current tables"
     drop_all || failed "The database refused to drop a table."
     step="loading the database dump"
-    zcat "${dir}/db.sql.gz" | mysql --defaults-extra-file="${cnf}" "${db_name}" 2> "${err}"
+    zcat "${dir}/db.sql.gz" | mysql --defaults-extra-file="${cnf}" --sandbox "${db_name}" 2> "${err}"
     status=("${PIPESTATUS[@]}")
     if [ "${status[0]}" -eq 0 ] && [ "${status[1]}" -eq 0 ]; then
         loaded=1
         break
+    fi
+    if grep -q 'Not allowed in the sandbox mode' "${err}"; then
+        failed "The dump holds a command for the database client (such as \\! or system, which run a shell command), and no dump that backup.sh makes holds one. The client refused it, so it did not run. This backup will fail the same way again: restore the one taken just before this restore."
     fi
     echo "The load stopped (try ${attempt} of 3): $(head -n 1 "${err}" | cut -c1-200)"
 done

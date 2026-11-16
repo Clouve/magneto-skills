@@ -102,6 +102,19 @@ sc_names() {
     SC_VOL_DB="${SC_STACK_PREFIX}-dbdata-${SC_ID}"
 }
 
+# restore.sh runs the database client as root and hands it SQL on its standard input: the dump, and the tables
+# to drop. A line such as \! or system in that stream is a command for the client, and the client would run it
+# as a shell command, as root. Its sandbox refuses those commands. So every client in restore.sh that reads a
+# pipe runs with --sandbox. This needs no container.
+if wants backup; then
+    section "restore.sh: the database client reads its pipe in its sandbox"
+    piped="$(awk '/^[[:space:]]*#/ { next } /\|[[:space:]]*(mysql|mariadb)([[:space:]]|$)/ { print FNR ": " $0 }' "${SC_STACK_PLUGIN}/skills/suitecrm/scripts/restore.sh")"
+    n_piped="$(printf '%s\n' "${piped}" | grep -c . || true)"
+    if [ "${n_piped}" -ge 2 ]; then ok "the test finds the clients in restore.sh that read a pipe (${n_piped}: the drop and the load)"; else bad "the test finds the clients in restore.sh that read a pipe (${n_piped}: the drop and the load)" "${piped}"; fi
+    plain="$(printf '%s\n' "${piped}" | grep -v -e '--sandbox' || true)"
+    if [ -z "${plain}" ]; then ok "every one of them runs with --sandbox"; else bad "every one of them runs with --sandbox" "${plain}"; fi
+fi
+
 sc_stack_build || exit $?
 if [ -n "${SC_TEST_REUSE:-}" ]; then
     SC_ID="${SC_TEST_REUSE}"
@@ -2492,6 +2505,73 @@ if wants backup; then
     if ! sc_app_root "test -e ${rmarker} || test -e ${bdir}/RESTORE-IN-PROGRESS"; then ok "it removes the marker, and the marker's earlier name too"; else bad "it removes the marker, and the marker's earlier name too"; fi
     run "$S/run-in-suitecrm.sh --check"
     is_rc 0 "after which SuiteCRM can be worked on again"
+
+    # A dump with commands for the database client in it. The client reads the dump as root, and \! and system
+    # run a shell command. Its sandbox refuses them, so such a restore fails at the load and runs nothing.
+    # mariadb-dump's own dumps begin with a line that turns the sandbox on, so one command goes in above that
+    # line (\!) and the other into a dump without it (system). A restore of a real backup then puts SuiteCRM
+    # back. That backup's dump holds a trigger, written between DELIMITER lines, and it loads in the sandbox.
+    sc_app_root 'rm -f /tmp/bak-test-sandbox-bang /tmp/bak-test-sandbox-system'
+    sc_db_sql "DROP TABLE IF EXISTS bak_test_trig; CREATE TABLE bak_test_trig (n INT); CREATE TRIGGER bak_test_trig_bi BEFORE INSERT ON bak_test_trig FOR EACH ROW SET NEW.n = NEW.n + 1"
+    sleep 1
+    take_backup
+    b6="$(backup_name)"
+    sc_db_sql "DROP TABLE bak_test_trig"
+    delimiters="$(sc_app_root "zcat ${bdir}/${b6}/db.sql.gz | grep -c '^DELIMITER' || true")"
+    if [ "${delimiters:-0}" -ge 2 ]; then ok "(a backup whose dump holds a trigger, between DELIMITER lines)"; else bad "(a backup whose dump holds a trigger, between DELIMITER lines)" "${delimiters}"; fi
+    if sc_app_root "zcat ${bdir}/${b6}/db.sql.gz | head -n 1 | grep -q 'enable the sandbox mode'"; then echo "  ...its dump begins with mariadb-dump's line that turns the sandbox on"; fi
+    # bad_dump NAME WHERE LINE: a copy of that backup named NAME whose dump has LINE in it: at the top, or (WHERE
+    # mid) after the first table's rows, in a dump without mariadb-dump's sandbox line. Checksums made again.
+    bad_dump() {
+        docker exec -e "N=$1" -e "WHERE=$2" -e "LINE=$3" -e "FROM=${bdir}/${b6}" -e "BDIR=${bdir}" "${SC_APP}" bash -c '
+            set -e
+            rm -rf "${BDIR:?}/${N:?}" && cp -a "${FROM}" "${BDIR}/${N}" && cd "${BDIR}/${N}"
+            if [ "${WHERE}" = top ]; then
+                { printf "%s\n" "${LINE}"; zcat db.sql.gz; } | gzip > db.new
+            else
+                zcat db.sql.gz | awk "NR == 1 && /enable the sandbox mode/ { next } { print } !done && /^UNLOCK TABLES;/ { print ENVIRON[\"LINE\"]; done = 1 }" | gzip > db.new
+            fi
+            mv db.new db.sql.gz && sha256sum db.sql.gz state.tar.gz > SHA256SUMS && chmod 600 ./*' < /dev/null
+    }
+    bad_dump 20200606-060606 top '\! touch /tmp/bak-test-sandbox-bang'
+    bad_dump 20200607-060606 mid 'system touch /tmp/bak-test-sandbox-system'
+    craft_ok="$(sc_app_root "zcat ${bdir}/20200606-060606/db.sql.gz | head -n 1; zcat ${bdir}/20200607-060606/db.sql.gz | grep -c -e '^system touch' -e 'enable the sandbox mode'")"
+    if [ "${craft_ok}" = $'\\! touch /tmp/bak-test-sandbox-bang\n1' ]; then ok "(two backups whose dumps hold a client command: \\! on the first line, and system in a dump without the sandbox line)"; else bad "(two backups whose dumps hold a client command)" "${craft_ok}"; fi
+    run "$S/run-in-suitecrm.sh restore.sh --backup 20200606-060606 --yes-replace-current-data"
+    is_rc 4 "a restore whose dump begins with \\! fails at the load"
+    has err "loading the database dump" "and names the step"
+    has err "command for the database client" "and says that the dump holds a command for the database client"
+    if ! sc_app_root 'test -e /tmp/bak-test-sandbox-bang'; then ok "the shell command did not run"; else bad "the shell command did not run" "$(sc_app_root 'ls -la /tmp/bak-test-sandbox-bang')"; fi
+    if sc_app_root "test -e ${rmarker}"; then ok "the marker stays, as after any load that fails"; else bad "the marker stays, as after any load that fails"; fi
+    run "$S/run-in-suitecrm.sh restore.sh --backup 20200607-060606 --yes-replace-current-data"
+    is_rc 4 "a restore whose dump has system in the middle, and no sandbox line, fails at the load"
+    has err "command for the database client" "and says why"
+    if ! sc_app_root 'test -e /tmp/bak-test-sandbox-system'; then ok "that shell command did not run either"; else bad "that shell command did not run either" "$(sc_app_root 'ls -la /tmp/bak-test-sandbox-system')"; fi
+    run "$S/run-in-suitecrm.sh restore.sh --backup ${b6} --yes-replace-current-data"
+    is_rc 0 "a restore of the real backup runs over the marker and finishes"
+    sql_is "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = 'suitecrm' AND trigger_name = 'bak_test_trig_bi'" 1 "its trigger, which the dump holds between DELIMITER lines, is back"
+    sql_is "INSERT INTO bak_test_trig VALUES (1); SELECT n FROM bak_test_trig" 2 "and works"
+    sql_is "SELECT COUNT(*) FROM accounts WHERE deleted = 0 AND name = 'After Backup Co'" 1 "and the records are the backup's"
+    if ! sc_app_root "test -e ${rmarker}"; then ok "the marker is gone"; else bad "the marker is gone"; fi
+    # A client without a sandbox mode: the restore refuses before it changes anything, also in the preview.
+    docker exec -i "${SC_APP}" bash -c 'cat > /usr/local/sbin/mysql && chmod 755 /usr/local/sbin/mysql' <<'CLIENT'
+#!/bin/sh
+# tests only: a database client that has no --sandbox
+for a in "$@"; do if [ "$a" = --sandbox ]; then echo "mysql: unknown option '--sandbox'" >&2; exit 7; fi; done
+exec /usr/bin/mysql "$@"
+CLIENT
+    run "$S/run-in-suitecrm.sh restore.sh --backup ${b6}"
+    is_rc 1 "with a client that has no --sandbox, the preview refuses"
+    has err "no sandbox mode" "and says why"
+    sc_app_root "rm -f ${rmarker}"
+    run "$S/run-in-suitecrm.sh restore.sh --backup ${b6} --yes-replace-current-data"
+    is_rc 1 "and so does the restore"
+    if ! sc_app_root "test -e ${rmarker}"; then ok "without a marker: nothing was changed"; else bad "without a marker: nothing was changed"; fi
+    sql_is "SELECT COUNT(*) FROM bak_test_trig" 1 "and the database is as it was"
+    sc_app_root "rm -f /usr/local/sbin/mysql; rm -rf ${bdir}/20200606-060606 ${bdir}/20200607-060606 ${bdir}/${b6}; rm -f ${hold}"
+    sc_db_sql "DROP TABLE bak_test_trig"
+    run "$S/run-in-suitecrm.sh --check"
+    is_rc 0 "SuiteCRM can be worked on afterwards"
 
     # A restore that is killed outright. Another session holds a lock on one table, so the restore stops in the
     # middle of dropping the tables, and there it is killed. The kernel frees its lock, the marker and the hold
